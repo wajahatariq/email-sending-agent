@@ -20,6 +20,17 @@ export function incrementCounterSql(): string {
     'on conflict (domain_id, day) do update set sent_count = counters.sent_count + 1';
 }
 
+/**
+ * Documented/tested string form of the atomic soft-fail status CASE expression.
+ *
+ * The pre-update column value is `attempts`, so `attempts + 1 >= 3` correctly
+ * evaluates whether the NEW attempts value (after increment) reaches the
+ * failure threshold — all within a single atomic UPDATE, no prior SELECT.
+ */
+export function softFailStatusSql(): string {
+  return "case when attempts + 1 >= 3 then 'failed' else 'pending' end";
+}
+
 /** UTC date string (YYYY-MM-DD) for `counters.day` and "sent today" queries. */
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -218,18 +229,17 @@ export function buildPorts(): TickPorts {
         return;
       }
 
-      // soft: read-then-write (batch can't express interactive reads on
-      // neon-http). After 3 attempts the recipient is permanently failed.
-      const cur = await db
-        .select({ attempts: s.recipients.attempts })
-        .from(s.recipients)
-        .where(eq(s.recipients.id, x.recipientId));
-      const attempts2 = (cur[0]?.attempts ?? 0) + 1;
-      const status = attempts2 >= 3 ? 'failed' : 'pending';
+      // soft: atomic single UPDATE — no prior SELECT needed.
+      // attempts increments by 1 and status flips to 'failed' once the NEW
+      // attempts value (pre-update column + 1) reaches 3.
       await db.batch([
         db
           .update(s.recipients)
-          .set({ status, attempts: attempts2, failReason: x.error ?? null })
+          .set({
+            attempts: sql`${s.recipients.attempts} + 1`,
+            status: sql`case when ${s.recipients.attempts} + 1 >= 3 then 'failed' else 'pending' end`,
+            failReason: x.error ?? null,
+          })
           .where(eq(s.recipients.id, x.recipientId)),
         db.insert(s.sendLog).values({
           recipientId: x.recipientId,

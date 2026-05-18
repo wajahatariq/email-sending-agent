@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { incrementCounterSql } from '../../src/lib/tickAdapters';
+import { incrementCounterSql, softFailStatusSql } from '../../src/lib/tickAdapters';
 
 describe('incrementCounterSql', () => {
   it('is an atomic upsert that adds 1 on conflict (domain_id, day)', () => {
@@ -12,5 +12,15 @@ describe('incrementCounterSql', () => {
     const sql = incrementCounterSql();
     expect(sql).toContain('$1');
     expect(sql).toContain('$2');
+  });
+});
+
+describe('softFailStatusSql', () => {
+  it('is a CASE expression that sets failed at >= 3 attempts, else pending', () => {
+    const expr = softFailStatusSql();
+    expect(expr).toMatch(/case when/i);
+    expect(expr).toMatch(/>= 3/);
+    expect(expr).toMatch(/'failed'/);
+    expect(expr).toMatch(/'pending'/);
   });
 });
