@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { encryptSecret, decryptSecret } from '../../src/lib/crypto';
 
-const KEY = Buffer.alloc(32, 7).toString('base64');
+const KEY = Buffer.alloc(32, 7).toString('base64'); // test key only — not a real encryption key
 
 describe('crypto', () => {
   it('roundtrips a secret', () => {
@@ -18,5 +18,20 @@ describe('crypto', () => {
     const enc = encryptSecret('secret', KEY);
     const bad = enc.slice(0, -2) + (enc.endsWith('aa') ? 'bb' : 'aa');
     expect(() => decryptSecret(bad, KEY)).toThrow();
+  });
+
+  it('encryptSecret rejects empty plaintext', () => {
+    expect(() => encryptSecret('', KEY)).toThrow(/empty/);
+  });
+
+  it('decryptSecret rejects wrong-length key', () => {
+    const enc = encryptSecret('x', KEY);
+    const shortKey = Buffer.alloc(16, 7).toString('base64');
+    expect(() => decryptSecret(enc, shortKey)).toThrow(/32 bytes/);
+  });
+
+  it('decryptSecret rejects payloads without exactly 3 segments', () => {
+    expect(() => decryptSecret('a.b', KEY)).toThrow(/bad ciphertext/);
+    expect(() => decryptSecret('a.b.c.d', KEY)).toThrow(/bad ciphertext/);
   });
 });
