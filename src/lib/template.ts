@@ -3,22 +3,35 @@ export interface RecipientInput { email: string; name: string; company: string; 
 export interface RenderConfig { companyName: string; companyAddress: string; baseUrl: string; }
 export interface RenderedEmail { subject: string; html: string; text: string; headers: Record<string, string>; }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function fill(s: string, ctx: Record<string, string>): string {
   return s.replace(/\{\{\s*([\w]+)\s*\}\}/g, (_, k) => ctx[k] ?? '');
+}
+
+function fillHtml(s: string, ctx: Record<string, string>): string {
+  return s.replace(/\{\{\s*([\w]+)\s*\}\}/g, (_, k) => escapeHtml(ctx[k] ?? ''));
 }
 
 export function renderEmail(
   t: TemplateInput, r: RecipientInput, unsubToken: string, cfg: RenderConfig,
 ): RenderedEmail {
+  // r.vars keys intentionally override name/company/email — recipient-level personalisation takes precedence
   const ctx = { name: r.name, company: r.company, email: r.email, ...r.vars };
   const unsubUrl = `${cfg.baseUrl}/api/unsub?token=${unsubToken}`;
   const footerHtml =
-    `<hr><p style="font-size:12px;color:#888">${cfg.companyName}, ${cfg.companyAddress}.` +
-    ` <a href="${unsubUrl}">Unsubscribe</a></p>`;
+    `<hr><p style="font-size:12px;color:#888">${escapeHtml(cfg.companyName)}, ${escapeHtml(cfg.companyAddress)}.` +
+    ` <a href="${escapeHtml(unsubUrl)}">Unsubscribe</a></p>`;
   const footerText = `\n\n--\n${cfg.companyName}, ${cfg.companyAddress}.\nUnsubscribe: ${unsubUrl}`;
   return {
     subject: fill(t.subject, ctx),
-    html: fill(t.bodyHtml, ctx) + footerHtml,
+    html: fillHtml(t.bodyHtml, ctx) + footerHtml,
     text: fill(t.bodyText, ctx) + footerText,
     headers: {
       'List-Unsubscribe': `<${unsubUrl}>, <mailto:unsubscribe@${new URL(cfg.baseUrl).hostname}?subject=unsubscribe>`,
