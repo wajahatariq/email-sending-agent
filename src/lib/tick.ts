@@ -1,0 +1,185 @@
+import { ticksRemaining, tickAllowance } from './allowance';
+import { warmupDay, warmupLimit } from './warmup';
+import { roundRobin, weightedPick } from './rotation';
+import { partitionSuppressed } from './suppression';
+import { renderEmail } from './template';
+
+const TICK_MIN = 10;
+const BATCH_HARD_CAP = 60;
+
+export interface TickPorts {
+  now: () => Date;
+  rng: () => number;
+  getActiveCampaign: () => Promise<null | { id: number; bhStart: number; bhEnd: number; timezone: string; globalDailyCap: number; perInboxCap: number; jitterPct: number; }>;
+  getEligibleDomains: () => Promise<Array<{ id: number; fromName: string; fromEmail: string; smtp: { host: string; port: number; user: string; pass: string }; dailyCap: number; warmupStart: Date; sentToday: number; }>>;
+  getSuppressed: () => Promise<Set<string>>;
+  getPendingRecipients: (limit: number) => Promise<Array<{ id: number; email: string; name: string; company: string; vars: Record<string, string>; unsubToken: string; }>>;
+  getActiveTemplates: () => Promise<Array<{ id: number; subject: string; bodyHtml: string; bodyText: string; weight: number; }>>;
+  getTotalSentToday: () => Promise<number>;
+  lastDomainIndex: () => Promise<number>;
+  send: (domainSmtp: { host: string; port: number; user: string; pass: string }, msg: { from: string; to: string; subject: string; html: string; text: string; headers: Record<string, string> }) => Promise<{ ok: boolean; response?: string; kind?: 'soft' | 'hard' | 'config'; error?: string }>;
+  recordSent: (x: { recipientId: number; domainId: number; templateId: number; response?: string }) => Promise<void>;
+  recordFailure: (x: { recipientId: number; domainId: number; kind: 'soft' | 'hard' | 'config'; error?: string }) => Promise<void>;
+  suppress: (email: string, reason: 'bounce') => Promise<void>;
+  pauseDomain: (domainId: number, reason: string) => Promise<void>;
+  cfg: { companyName: string; companyAddress: string; baseUrl: string };
+}
+
+export interface TickResult { sent: number; failed: number; skipped?: string; }
+
+type Domain = Awaited<ReturnType<TickPorts['getEligibleDomains']>>[number];
+
+interface LiveDomain {
+  domain: Domain;
+  remaining: number; // remaining budget for THIS tick (never below 0)
+}
+
+export async function runTick(ports: TickPorts): Promise<TickResult> {
+  const campaign = await ports.getActiveCampaign();
+  if (!campaign) return { sent: 0, failed: 0, skipped: 'no-active-campaign' };
+
+  const now = ports.now();
+
+  const ticksLeft = ticksRemaining(
+    now, campaign.bhStart, campaign.bhEnd, TICK_MIN, campaign.timezone,
+  );
+  if (ticksLeft <= 0) return { sent: 0, failed: 0, skipped: 'outside-window' };
+
+  const totalSent = await ports.getTotalSentToday();
+  const globalRemaining = campaign.globalDailyCap - totalSent;
+  if (globalRemaining <= 0) return { sent: 0, failed: 0, skipped: 'global-cap-reached' };
+
+  const domains = await ports.getEligibleDomains();
+  if (domains.length === 0) return { sent: 0, failed: 0, skipped: 'no-eligible-domains' };
+
+  // Per-domain effective cap = min(dailyCap, warmupLimit, perInboxCap);
+  // remaining = max(0, cap - sentToday).
+  const live: LiveDomain[] = [];
+  let domainBudget = 0;
+  for (const domain of domains) {
+    const wDay = warmupDay(domain.warmupStart, now);
+    const cap = Math.min(
+      domain.dailyCap,
+      warmupLimit(wDay, domain.dailyCap),
+      campaign.perInboxCap,
+    );
+    const remaining = Math.max(0, cap - domain.sentToday);
+    domainBudget += remaining;
+    if (remaining > 0) live.push({ domain, remaining });
+  }
+  if (domainBudget <= 0) return { sent: 0, failed: 0, skipped: 'domain-caps-reached' };
+
+  const budget = Math.min(globalRemaining, domainBudget);
+  const allowance = Math.min(
+    tickAllowance(budget, ticksLeft, ports.rng),
+    BATCH_HARD_CAP,
+  );
+  if (allowance <= 0) return { sent: 0, failed: 0, skipped: 'no-allowance-this-tick' };
+
+  const templates = await ports.getActiveTemplates();
+  if (templates.length === 0) return { sent: 0, failed: 0, skipped: 'no-active-templates' };
+
+  const suppressed = await ports.getSuppressed();
+  // Over-fetch so suppressed entries don't starve the batch.
+  const pending = await ports.getPendingRecipients(allowance * 2);
+  const { sendable } = partitionSuppressed(pending, suppressed);
+  if (sendable.length === 0) return { sent: 0, failed: 0, skipped: 'no-sendable-recipients' };
+
+  let lastIdx = await ports.lastDomainIndex();
+  let sent = 0;
+  let failed = 0;
+
+  // Hard bound: never iterate past `allowance` send attempts overall, and
+  // never let a domain exceed its computed per-tick remaining cap.
+  const batch = sendable.slice(0, allowance);
+  for (const r of batch) {
+    // Recompute the live pool each iteration: domains with budget > 0 and
+    // not paused this tick. `live` entries with remaining <= 0 are skipped;
+    // config-paused domains are spliced out of `live` entirely below.
+    const pool = live.filter((l) => l.remaining > 0);
+    if (pool.length === 0) break; // no domain can take this recipient
+
+    // Global cap is also enforced structurally: total successful sends can
+    // never exceed `allowance`, and `allowance <= globalRemaining`.
+    const choice = roundRobin(pool, lastIdx);
+    // Track index against the stable `live` array so round-robin remains
+    // fair as the pool shrinks (config-pause / budget exhaustion).
+    lastIdx = live.indexOf(choice);
+
+    const tmpl = weightedPick(templates, ports.rng);
+    const rendered = renderEmail(
+      { subject: tmpl.subject, bodyHtml: tmpl.bodyHtml, bodyText: tmpl.bodyText },
+      { email: r.email, name: r.name, company: r.company, vars: r.vars },
+      r.unsubToken,
+      ports.cfg,
+    );
+
+    const fromHeader = `${choice.domain.fromName} <${choice.domain.fromEmail}>`;
+    const res = await ports.send(choice.domain.smtp, {
+      from: fromHeader,
+      to: r.email,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      headers: rendered.headers,
+    });
+
+    if (res.ok) {
+      await ports.recordSent({
+        recipientId: r.id,
+        domainId: choice.domain.id,
+        templateId: tmpl.id,
+        response: res.response,
+      });
+      choice.remaining -= 1; // consume one unit of this domain's per-tick cap
+      sent += 1;
+      continue;
+    }
+
+    if (res.kind === 'config') {
+      // The SMTP DOMAIN is broken (bad creds/config), NOT the recipient.
+      // Pause the domain, drop it from this tick's rotation, leave the
+      // recipient PENDING with NO attempts++ and NO suppression.
+      await ports.pauseDomain(choice.domain.id, 'smtp-config');
+      await ports.recordFailure({
+        recipientId: r.id,
+        domainId: choice.domain.id,
+        kind: 'config',
+        error: res.error,
+      });
+      // Remove this domain from the live pool for the rest of the tick so
+      // subsequent recipients never get routed through the dead domain.
+      const idx = live.indexOf(choice);
+      if (idx >= 0) live.splice(idx, 1);
+      failed += 1;
+      // Reset round-robin cursor: the array changed under us. Starting from
+      // -1 keeps selection deterministic against the mutated `live` array.
+      lastIdx = -1;
+      if (live.filter((l) => l.remaining > 0).length === 0) break;
+      continue;
+    }
+
+    if (res.kind === 'hard') {
+      await ports.recordFailure({
+        recipientId: r.id,
+        domainId: choice.domain.id,
+        kind: 'hard',
+        error: res.error,
+      });
+      await ports.suppress(r.email, 'bounce');
+      failed += 1;
+      continue;
+    }
+
+    // soft (or undefined kind): transient, recipient stays pending for retry.
+    await ports.recordFailure({
+      recipientId: r.id,
+      domainId: choice.domain.id,
+      kind: res.kind ?? 'soft',
+      error: res.error,
+    });
+    failed += 1;
+  }
+
+  return { sent, failed };
+}
