@@ -9,9 +9,16 @@ async function handle(token: string | null) {
   if (!token) return NextResponse.json({ error: 'missing token' }, { status: 400 });
   const email = verifyUnsubToken(token, process.env.CRON_SECRET ?? '');
   if (!email) return NextResponse.json({ error: 'invalid token' }, { status: 400 });
-  const db = getDb();
-  await db.insert(s.suppression).values({ email: email.toLowerCase(), reason: 'unsubscribe' })
-    .onConflictDoNothing();
+  try {
+    const db = getDb();
+    await db.insert(s.suppression).values({ email: email.toLowerCase(), reason: 'unsubscribe' })
+      .onConflictDoNothing();
+  } catch (err) {
+    console.error('[unsub] DB error', err);
+    return new NextResponse('Unsubscribe failed, please try again later.', {
+      status: 500, headers: { 'content-type': 'text/plain' },
+    });
+  }
   return new NextResponse('You have been unsubscribed.', {
     status: 200, headers: { 'content-type': 'text/plain' },
   });

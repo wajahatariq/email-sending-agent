@@ -20,4 +20,10 @@ describe('unsub token', () => {
     expect(verifyUnsubToken('', SECRET)).toBeNull();
     expect(verifyUnsubToken('nodot', SECRET)).toBeNull();
   });
+  it('rejects a token whose signature length differs without throwing', () => {
+    const t = makeUnsubToken('a@x.com', SECRET);
+    const [b] = t.split('.');
+    expect(verifyUnsubToken(`${b}.short`, SECRET)).toBeNull();
+    expect(() => verifyUnsubToken(`${b}.short`, SECRET)).not.toThrow();
+  });
 });
