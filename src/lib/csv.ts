@@ -35,7 +35,7 @@ function sanitizeText(v: string): string {
 
 export function parseRecipientsCsv(raw: string): CsvResult {
   const errors: string[] = [];
-  const lines = raw.replace(/\r\n/g, '\n').split('\n').filter(l => l.trim() !== '');
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
   if (lines.length === 0) return { valid: [], errors: ['empty file'] };
 
   const headers = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());

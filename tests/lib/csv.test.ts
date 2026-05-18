@@ -26,4 +26,11 @@ describe('parseRecipientsCsv', () => {
     expect(out.errors[0]).toContain('email column');
     expect(out.valid).toHaveLength(0);
   });
+
+  it('parses bare CR (legacy Mac) line endings', () => {
+    const out = parseRecipientsCsv('email,name\rd@x.com,Dee\re@x.com,Eee\r');
+    expect(out.errors).toHaveLength(0);
+    expect(out.valid.map(r => r.email)).toEqual(['d@x.com', 'e@x.com']);
+    expect(out.valid[0].name).toBe('Dee');
+  });
 });
