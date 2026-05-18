@@ -28,4 +28,15 @@ describe('allowance', () => {
   it('returns 0 when no ticks remain', () => {
     expect(tickAllowance(100, 0, () => 0.5)).toBe(0);
   });
+
+  it('includes the exact start hour boundary', () => {
+    const now = new Date('2026-05-19T09:00:00Z');
+    // 9:00 -> 17:00 = 480 min, 10-min ticks -> 48
+    expect(ticksRemaining(now, 9, 17, 10, 'UTC')).toBe(48);
+  });
+
+  it('excludes the exact end hour boundary', () => {
+    const now = new Date('2026-05-19T17:00:00Z');
+    expect(ticksRemaining(now, 9, 17, 10, 'UTC')).toBe(0);
+  });
 });
