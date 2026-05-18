@@ -6,7 +6,8 @@ export function warmupDay(startDate: Date, now: Date): number {
 }
 
 export function warmupLimit(day: number, dailyCap: number): number {
-  // day1=10, then *1.5 each day, rounded down.
-  const raw = Math.floor(10 * Math.pow(1.5, day - 1));
+  // day1=10, then *1.5 each day, rounded down. day clamped >=1 defensively.
+  const d = Math.max(1, day);
+  const raw = Math.floor(10 * Math.pow(1.5, d - 1));
   return Math.min(raw, dailyCap);
 }

@@ -25,4 +25,15 @@ describe('warmup', () => {
     const d = new Date('2026-05-10T00:00:00Z');
     expect(warmupDay(d, d)).toBe(1);
   });
+
+  it('clamps day < 1 to day-1 limit (defensive)', () => {
+    expect(warmupLimit(0, 500)).toBe(10);
+    expect(warmupLimit(-3, 500)).toBe(10);
+  });
+
+  it('warmupDay clamps to 1 when now is before start (clock skew)', () => {
+    const start = new Date('2026-05-10T00:00:00Z');
+    const earlier = new Date('2026-05-08T00:00:00Z');
+    expect(warmupDay(start, earlier)).toBe(1);
+  });
 });
