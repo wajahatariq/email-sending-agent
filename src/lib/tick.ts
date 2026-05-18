@@ -1,6 +1,6 @@
 import { ticksRemaining, tickAllowance } from './allowance';
 import { warmupDay, warmupLimit } from './warmup';
-import { roundRobin, weightedPick } from './rotation';
+import { weightedPick } from './rotation';
 import { partitionSuppressed } from './suppression';
 import { renderEmail } from './template';
 
@@ -32,6 +32,7 @@ type Domain = Awaited<ReturnType<TickPorts['getEligibleDomains']>>[number];
 interface LiveDomain {
   domain: Domain;
   remaining: number; // remaining budget for THIS tick (never below 0)
+  paused: boolean; // set true if this domain hits an SMTP-config failure
 }
 
 export async function runTick(ports: TickPorts): Promise<TickResult> {
@@ -65,7 +66,7 @@ export async function runTick(ports: TickPorts): Promise<TickResult> {
     );
     const remaining = Math.max(0, cap - domain.sentToday);
     domainBudget += remaining;
-    if (remaining > 0) live.push({ domain, remaining });
+    if (remaining > 0) live.push({ domain, remaining, paused: false });
   }
   if (domainBudget <= 0) return { sent: 0, failed: 0, skipped: 'domain-caps-reached' };
 
@@ -93,19 +94,35 @@ export async function runTick(ports: TickPorts): Promise<TickResult> {
   // never let a domain exceed its computed per-tick remaining cap.
   const batch = sendable.slice(0, allowance);
   for (const r of batch) {
-    // Recompute the live pool each iteration: domains with budget > 0 and
-    // not paused this tick. `live` entries with remaining <= 0 are skipped;
-    // config-paused domains are spliced out of `live` entirely below.
-    const pool = live.filter((l) => l.remaining > 0);
-    if (pool.length === 0) break; // no domain can take this recipient
+    // Round-robin domain selection over a STABLE index space.
+    //
+    // `live` is never mutated (no splice) for the whole tick, so its indices
+    // are a fixed coordinate system. The cursor (`lastIdx`) advances over
+    // that same stable array and simply SKIPS entries that are exhausted
+    // (remaining <= 0) or config-paused. Because both the cursor and the
+    // eligibility test share one index space, distribution stays fair as
+    // domains drop out of contention — fixing the prior index-space mismatch
+    // where the cursor tracked `live` but selection ran over a shrinking
+    // filtered/spliced copy (which starved domains and burst-sent).
+    //
+    // rotation.roundRobin is intentionally NOT used here: it always returns
+    // the next slot unconditionally and cannot express "skip while scanning
+    // until an eligible entry is found", so the scan is implemented inline.
+    let chosenIdx = -1;
+    for (let step = 1; step <= live.length; step++) {
+      const idx = (lastIdx + step) % live.length;
+      const cand = live[idx];
+      if (cand.remaining > 0 && !cand.paused) {
+        chosenIdx = idx;
+        break;
+      }
+    }
+    if (chosenIdx < 0) break; // no domain can take this (or any further) recipient
+    const choice = live[chosenIdx];
+    lastIdx = chosenIdx;
 
     // Global cap is also enforced structurally: total successful sends can
     // never exceed `allowance`, and `allowance <= globalRemaining`.
-    const choice = roundRobin(pool, lastIdx);
-    // Track index against the stable `live` array so round-robin remains
-    // fair as the pool shrinks (config-pause / budget exhaustion).
-    lastIdx = live.indexOf(choice);
-
     const tmpl = weightedPick(templates, ports.rng);
     const rendered = renderEmail(
       { subject: tmpl.subject, bodyHtml: tmpl.bodyHtml, bodyText: tmpl.bodyText },
@@ -138,8 +155,9 @@ export async function runTick(ports: TickPorts): Promise<TickResult> {
 
     if (res.kind === 'config') {
       // The SMTP DOMAIN is broken (bad creds/config), NOT the recipient.
-      // Pause the domain, drop it from this tick's rotation, leave the
-      // recipient PENDING with NO attempts++ and NO suppression.
+      // Pause the domain and leave the recipient PENDING with NO attempts++
+      // and NO suppression so it retries via a healthy domain later.
+      choice.paused = true;
       await ports.pauseDomain(choice.domain.id, 'smtp-config');
       await ports.recordFailure({
         recipientId: r.id,
@@ -147,15 +165,10 @@ export async function runTick(ports: TickPorts): Promise<TickResult> {
         kind: 'config',
         error: res.error,
       });
-      // Remove this domain from the live pool for the rest of the tick so
-      // subsequent recipients never get routed through the dead domain.
-      const idx = live.indexOf(choice);
-      if (idx >= 0) live.splice(idx, 1);
       failed += 1;
-      // Reset round-robin cursor: the array changed under us. Starting from
-      // -1 keeps selection deterministic against the mutated `live` array.
-      lastIdx = -1;
-      if (live.filter((l) => l.remaining > 0).length === 0) break;
+      // Do NOT splice and do NOT reset lastIdx: `live` stays a stable index
+      // space and the `paused` flag makes the next scan skip this domain,
+      // so rotation over the survivors remains correct and fair.
       continue;
     }
 
