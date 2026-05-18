@@ -20,6 +20,7 @@ export function makeTransport(c: SmtpConfig): Transporter {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function classifySmtpError(e: any): FailKind {
   const code = e?.responseCode;
   if (typeof code === 'number' && code >= 500) return 'hard';
@@ -30,11 +31,13 @@ export function classifySmtpError(e: any): FailKind {
 
 export async function sendOne(transport: Transporter, m: OutMessage): Promise<SendResult> {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const info: any = await transport.sendMail({
       from: m.from, to: m.to, subject: m.subject,
       html: m.html, text: m.text, headers: m.headers,
     });
     return { ok: true, response: info?.response ?? '250 OK' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     return { ok: false, kind: classifySmtpError(e), error: e?.message ?? 'send failed' };
   }
