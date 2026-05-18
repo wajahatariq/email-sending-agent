@@ -7,8 +7,10 @@ export interface OutMessage {
   from: string; to: string; subject: string;
   html: string; text: string; headers: Record<string, string>;
 }
-export type FailKind = 'soft' | 'hard';
-export interface SendResult { ok: boolean; response?: string; kind?: FailKind; error?: string; }
+export type FailKind = 'soft' | 'hard' | 'config';
+export type SendResult =
+  | { ok: true; response: string }
+  | { ok: false; kind: FailKind; error: string };
 
 export function makeTransport(c: SmtpConfig): Transporter {
   return nodemailer.createTransport({
@@ -21,6 +23,7 @@ export function makeTransport(c: SmtpConfig): Transporter {
 export function classifySmtpError(e: any): FailKind {
   const code = e?.responseCode;
   if (typeof code === 'number' && code >= 500) return 'hard';
+  if (e?.code === 'EAUTH') return 'config';
   if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNECTION') return 'soft';
   return 'soft';
 }

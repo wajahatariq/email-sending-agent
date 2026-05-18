@@ -9,7 +9,7 @@ describe('sender', () => {
       html: '<p>h</p>', text: 't', headers: {},
     });
     expect(r.ok).toBe(true);
-    expect(r.response).toContain('250');
+    if (r.ok) { expect(r.response).toContain('250'); }
     expect(transport.sendMail).toHaveBeenCalledOnce();
   });
 
@@ -25,6 +25,19 @@ describe('sender', () => {
       from: 'a', to: 'x@y.com', subject: 's', html: 'h', text: 't', headers: {},
     });
     expect(r.ok).toBe(false);
-    expect(r.kind).toBe('hard');
+    if (!r.ok) { expect(r.kind).toBe('hard'); }
+  });
+
+  it('classifies EAUTH (bad SMTP creds) as config, not soft or hard', () => {
+    expect(classifySmtpError({ code: 'EAUTH' })).toBe('config');
+  });
+
+  it('config failure surfaces kind=config and does not look like a recipient bounce', async () => {
+    const transport = { sendMail: vi.fn().mockRejectedValue({ code: 'EAUTH', message: 'auth failed' }) };
+    const r = await sendOne(transport as any, {
+      from: 'a', to: 'x@y.com', subject: 's', html: 'h', text: 't', headers: {},
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.kind).toBe('config'); }
   });
 });
