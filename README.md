@@ -94,7 +94,7 @@ This requires `DATABASE_URL` to be set in the environment (or `.env.local`).
 vercel --prod
 ```
 
-After deployment, Vercel reads `vercel.json` and schedules the cron (`*/10 9-17 * * 1-5` — every 10 min, 09:00–17:59 UTC, Mon–Fri). This schedule **requires Vercel Pro**.
+After deployment, Vercel reads `vercel.json` and schedules the cron (`*/10 9-17 * * 1-5` — every 10 min, 09:00–17:59 UTC, Mon–Fri). This schedule **requires Vercel Pro**. The `functions` block in `vercel.json` also sets `maxDuration: 300`, which mirrors `export const maxDuration = 300` in `src/app/api/tick/route.ts` — for Next.js App Router the in-file export is the authoritative mechanism; the `vercel.json` entry is belt-and-suspenders.
 
 ---
 
