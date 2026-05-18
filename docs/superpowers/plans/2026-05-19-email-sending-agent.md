@@ -6,7 +6,7 @@
 
 **Architecture:** Next.js App Router on Vercel. Postgres (Neon) is the single source of truth. A Vercel Cron job hits a stateless `/api/tick` worker every ~10 min; each tick computes a bounded send allowance from caps + warmup + jitter, sends a small batch over per-domain SMTP via nodemailer, and records state atomically. "Start" only flips campaign status; the cron does paced sending.
 
-**Tech Stack:** Next.js 16 (App Router, TypeScript), Drizzle ORM + Neon Postgres, nodemailer, Vitest, Zod, Vercel Cron. Node.js runtime (Fluid Compute, not edge).
+**Tech Stack:** Next.js 15 (App Router, TypeScript), Drizzle ORM + Neon Postgres, nodemailer, Vitest, Zod, Vercel Cron. Node.js runtime (Fluid Compute, not edge).
 
 **Source spec:** `docs/superpowers/specs/2026-05-19-email-sending-agent-design.md`
 
