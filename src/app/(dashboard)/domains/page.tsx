@@ -10,8 +10,10 @@ export const dynamic = 'force-dynamic';
 async function addDomain(formData: FormData) {
   'use server';
   const db = getDb();
+  const encKey = process.env.SMTP_ENC_KEY;
+  if (!encKey) throw new Error('SMTP_ENC_KEY not set');
   const smtpPass = formData.get('smtpPass') as string;
-  const smtpPassEnc = encryptSecret(smtpPass, process.env.SMTP_ENC_KEY!);
+  const smtpPassEnc = encryptSecret(smtpPass, encKey);
   const today = new Date().toISOString().slice(0, 10);
   await db.insert(s.domains).values({
     fromName: formData.get('fromName') as string,
