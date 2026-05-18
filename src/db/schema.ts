@@ -36,7 +36,7 @@ export const campaigns = pgTable('campaigns', {
   globalDailyCap: integer('global_daily_cap').notNull().default(200),
   perInboxCap: integer('per_inbox_cap').notNull().default(40),
   jitterPct: integer('jitter_pct').notNull().default(30),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const recipients = pgTable('recipients', {
@@ -54,7 +54,7 @@ export const recipients = pgTable('recipients', {
   region: text('region'),
   attempts: integer('attempts').notNull().default(0),
   failReason: text('fail_reason'),
-  sentAt: timestamp('sent_at'),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
 });
 
 export const sendLog = pgTable('send_log', {
@@ -64,13 +64,13 @@ export const sendLog = pgTable('send_log', {
   templateId: integer('template_id'),
   smtpResponse: text('smtp_response'),
   status: text('status').notNull(),
-  ts: timestamp('ts').notNull().defaultNow(),
+  ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const suppression = pgTable('suppression', {
   email: text('email').primaryKey(),
   reason: text('reason').notNull(),
-  ts: timestamp('ts').notNull().defaultNow(),
+  ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const counters = pgTable('counters', {

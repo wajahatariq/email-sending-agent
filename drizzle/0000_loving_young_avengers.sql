@@ -8,7 +8,7 @@ CREATE TABLE "campaigns" (
 	"global_daily_cap" integer DEFAULT 200 NOT NULL,
 	"per_inbox_cap" integer DEFAULT 40 NOT NULL,
 	"jitter_pct" integer DEFAULT 30 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "counters" (
@@ -48,7 +48,7 @@ CREATE TABLE "recipients" (
 	"region" text,
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"fail_reason" text,
-	"sent_at" timestamp
+	"sent_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "send_log" (
@@ -58,13 +58,13 @@ CREATE TABLE "send_log" (
 	"template_id" integer,
 	"smtp_response" text,
 	"status" text NOT NULL,
-	"ts" timestamp DEFAULT now() NOT NULL
+	"ts" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "suppression" (
 	"email" text PRIMARY KEY NOT NULL,
 	"reason" text NOT NULL,
-	"ts" timestamp DEFAULT now() NOT NULL
+	"ts" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "templates" (
