@@ -17,4 +17,15 @@ describe('rotation', () => {
     expect(weightedPick(ts, () => 0.1).id).toBe('a');
     expect(weightedPick(ts, () => 0.9).id).toBe('b');
   });
+
+  it('weightedPick throws on empty list', () => {
+    expect(() => weightedPick([] as { weight: number }[], () => 0.5)).toThrow(/no items/);
+  });
+
+  it('roundRobin never returns undefined for any negative lastIndex', () => {
+    const ds = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    expect(roundRobin(ds, -1).id).toBe(1);
+    expect(roundRobin(ds, -2)).toBeDefined();
+    expect(roundRobin(ds, -5)).toBeDefined();
+  });
 });
