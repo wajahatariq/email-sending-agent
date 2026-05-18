@@ -49,8 +49,14 @@ describe('multi-tick day invariants', () => {
     }
 
     expect(totalSent).toBeLessThanOrEqual(80);              // global cap
+    expect(totalSent).toBe(80);                             // fully utilises cap (300 recipients, rng=0.5)
     expect(sentByDomain[1]).toBeLessThanOrEqual(40);        // per-domain cap
     expect(sentByDomain[2]).toBeLessThanOrEqual(40);
+    // With lastDomainIndex always -1 (matching production), each tick's round-robin
+    // starts fresh at index 0, so small per-tick batches favour domain 1 early.
+    // Domain 1 reaches its cap of 40, then domain 2 absorbs the rest.
+    // The full-day result is exactly balanced: 40/40.
+    expect(Math.abs(sentByDomain[1] - sentByDomain[2])).toBeLessThanOrEqual(0); // perfectly balanced
     expect(sentEmails).not.toContain('u5@x.com');           // suppression honored
     expect(new Set(sentEmails).size).toBe(sentEmails.length); // no dupes
     expect(totalSent).toBeGreaterThan(0);                   // actually sent
@@ -100,9 +106,12 @@ describe('multi-tick day invariants', () => {
     expect(suppressedCalls).toHaveLength(0);       // config failure != recipient bounce; no suppression
     expect(r.failed).toBeGreaterThanOrEqual(1);    // at least one failure recorded
 
-    // The config failure consumed a slot but the recipient is NOT recorded sent.
-    // Whatever was actually sent must be fewer than pending.length (a config slot was consumed).
-    expect(sent.length).toBeLessThan(pending.length);
+    // The tick processes all 3 recipients: a@x.com hits domain 1's config failure (not sent),
+    // then b@x.com and c@x.com succeed via domain 2.
+    // lastDomainIndex=-1 means domain 1 (index 0) is always tried first.
+    expect(sent.length).toBe(2);
+    expect(sent).toEqual(expect.arrayContaining(['b@x.com', 'c@x.com']));
+    expect(sent).not.toContain('a@x.com');  // a@x.com was the config-failure recipient — not sent
 
     // No duplicate sends
     expect(new Set(sent).size).toBe(sent.length);
