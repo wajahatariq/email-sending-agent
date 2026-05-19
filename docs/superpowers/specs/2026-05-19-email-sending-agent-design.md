@@ -78,7 +78,7 @@ CSV upload → parse / validate / dedupe → `recipients(pending)`. Click **Star
 - Every email includes: real company name, valid physical postal address in footer, working unsubscribe — one-click `List-Unsubscribe` header + mailto + link.
 - **`/api/unsub?token=`** → adds email to `suppression(unsubscribe)` instantly, no login. Honored globally and permanently.
 - No deception: From name/domain tied to a real entity; subject not misleading.
-- Jurisdiction: CAN-SPAM (US) baseline by default. `consent_basis` + `region` fields per recipient; a hard toggle blocks sending to EU/Canada-flagged rows lacking a consent basis (GDPR/CASL require prior consent). The engine enforces this; it does not bypass it.
+- Jurisdiction: CAN-SPAM (US) baseline by default. `consent_basis` + `region` fields per recipient; a hard toggle blocks sending to EU/Canada-flagged rows lacking a consent basis (GDPR/CASL require prior consent). The engine enforces this; it does not bypass it. **(v1 deviation — see §11: ships as schema fields + operator responsibility; engine-side enforcement deferred, owner-accepted.)**
 - Suppression check is the **first** step before any send. Unsub/bounce/complaint addresses are never re-contacted.
 
 ## 7. Security / Secret Handling
@@ -93,7 +93,7 @@ CSV upload → parse / validate / dedupe → `recipients(pending)`. Click **Star
 
 - **SMTP soft fail** (4xx/timeout): recipient stays `pending`, `attempts++`, retried next tick, max 3 → `failed`.
 - **SMTP hard fail** (5xx / bad mailbox): recipient → `failed`, email → `suppression(bounce)`.
-- **Domain hard-bounce rate** over threshold (default 5% of that domain's sends): domain auto-paused, dashboard alert. Reputation protection — core goal.
+- **Domain hard-bounce rate** over threshold (default 5% of that domain's sends): domain auto-paused, dashboard alert. Reputation protection — core goal. **(v1 deviation — see §11: rate-based domain auto-pause deferred to v2, owner-accepted; per-recipient hard-bounce suppression IS implemented.)**
 - **Auth missing** (SPF/DKIM/DMARC unverified): domain blocked from sending until verified (pre-send guard).
 - **Cron overrun guard**: batch sized to complete < 300s; remainder waits next tick.
 - **Concurrency**: counter increment in a DB transaction → no cap overrun on overlapping ticks.
@@ -112,3 +112,13 @@ CSV upload → parse / validate / dedupe → `recipients(pending)`. Click **Star
 - Dashboard auth mechanism choice (env credential vs Clerk) — env credential for v1.
 - Neon provisioning via Vercel Marketplace.
 - Concrete cron interval and business-hours defaults.
+
+## 11. v1 Implementation Deviations (owner-accepted 2026-05-19)
+
+The following two spec requirements ship deferred in v1, explicitly accepted by the owner (wajahat@austrowebnlogo.com) after the final implementation review. They are documented here so the spec and the shipped code do not silently diverge.
+
+1. **GDPR/CASL consent enforcement (§6).** The spec states the engine enforces blocking of EU/Canada-flagged recipients lacking a `consent_basis`. v1 ships the `consent_basis` and `region` columns on `recipients` but does **not** filter on them in the send path (`getPendingRecipients`). Honoring consent for EU/CA recipients is the operator's responsibility in v1 (also stated in the README). Engine-side enforcement is a planned v2 addition: a `consent_basis`-aware filter in `getPendingRecipients`.
+
+2. **Domain hard-bounce-rate auto-pause (§8).** The spec calls for auto-pausing a domain when its hard-bounce rate exceeds a threshold. v1 implements per-recipient hard-bounce suppression (the recipient is suppressed and a `fail-hard` audit row written) and SMTP-config-failure domain pause, but **not** aggregate bounce-rate-based domain pause. Deferred to v2.
+
+Neither deferral affects the cap, suppression, authentication-gating, secret-handling, one-click-unsubscribe, mandatory-footer, or no-IP-evasion guarantees, all of which are implemented and tested.
