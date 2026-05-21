@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyUnsubToken } from '../../../lib/token';
-import { getDb } from '../../../db/client';
-import * as s from '../../../db/schema';
+import { suppressionCol } from '../../../db/collections';
 
 export const runtime = 'nodejs';
 
@@ -10,9 +9,11 @@ async function handle(token: string | null) {
   const email = verifyUnsubToken(token, process.env.CRON_SECRET ?? '');
   if (!email) return NextResponse.json({ error: 'invalid token' }, { status: 400 });
   try {
-    const db = getDb();
-    await db.insert(s.suppression).values({ email: email.toLowerCase(), reason: 'unsubscribe' })
-      .onConflictDoNothing();
+    await (await suppressionCol()).updateOne(
+      { _id: email.toLowerCase() },
+      { $setOnInsert: { reason: 'unsubscribe', ts: new Date() } },
+      { upsert: true },
+    );
   } catch (err) {
     console.error('[unsub] DB error', err);
     return new NextResponse('Unsubscribe failed, please try again later.', {

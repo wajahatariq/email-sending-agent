@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
-import { getDb } from '@/db/client';
-import * as s from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { campaignsCol } from '@/db/collections';
 import { SendNowButton } from './SendNowButton';
 
 export const dynamic = 'force-dynamic';
@@ -11,14 +9,12 @@ async function setCampaignStatus(formData: FormData) {
   'use server';
   const id = Number(formData.get('id'));
   const status = formData.get('status') as string;
-  const db = getDb();
-  await db.update(s.campaigns).set({ status }).where(eq(s.campaigns.id, id));
+  await (await campaignsCol()).updateOne({ id }, { $set: { status } });
   revalidatePath('/');
 }
 
 export default async function CampaignsPage() {
-  const db = getDb();
-  const campaigns = await db.select().from(s.campaigns).orderBy(s.campaigns.id);
+  const campaigns = await (await campaignsCol()).find({}).sort({ id: 1 }).toArray();
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '900px', margin: '0 auto' }}>

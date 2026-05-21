@@ -1,14 +1,14 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
-import { getDb } from '@/db/client';
-import * as s from '@/db/schema';
+import { templatesCol, nextId } from '@/db/collections';
 
 export const dynamic = 'force-dynamic';
 
 async function addTemplate(formData: FormData) {
   'use server';
-  const db = getDb();
-  await db.insert(s.templates).values({
+  const id = await nextId('templates');
+  await (await templatesCol()).insertOne({
+    id,
     label: formData.get('label') as string,
     subject: formData.get('subject') as string,
     bodyHtml: formData.get('bodyHtml') as string,
@@ -20,8 +20,7 @@ async function addTemplate(formData: FormData) {
 }
 
 export default async function TemplatesPage() {
-  const db = getDb();
-  const templates = await db.select().from(s.templates).orderBy(s.templates.id);
+  const templates = await (await templatesCol()).find({}).sort({ id: 1 }).toArray();
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '900px', margin: '0 auto' }}>

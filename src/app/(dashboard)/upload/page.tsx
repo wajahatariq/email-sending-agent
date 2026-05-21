@@ -1,17 +1,12 @@
 import Link from 'next/link';
-import { getDb } from '@/db/client';
-import * as s from '@/db/schema';
+import { campaignsCol } from '@/db/collections';
 import UploadForm from './UploadForm';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UploadPage() {
-  const db = getDb();
-  const campaigns = await db.select({
-    id: s.campaigns.id,
-    name: s.campaigns.name,
-    status: s.campaigns.status,
-  }).from(s.campaigns).orderBy(s.campaigns.id);
+  const allCampaigns = await (await campaignsCol()).find({}).sort({ id: 1 }).toArray();
+  const campaigns = allCampaigns.map(c => ({ id: c.id, name: c.name, status: c.status }));
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '800px', margin: '0 auto' }}>

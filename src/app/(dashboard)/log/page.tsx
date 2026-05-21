@@ -1,16 +1,13 @@
 import Link from 'next/link';
-import { getDb } from '@/db/client';
-import * as s from '@/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { sendLogCol, countersCol } from '@/db/collections';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LogPage() {
-  const db = getDb();
   const today = new Date().toISOString().slice(0, 10);
 
-  const logs = await db.select().from(s.sendLog).orderBy(desc(s.sendLog.ts)).limit(200);
-  const counters = await db.select().from(s.counters).where(eq(s.counters.day, today));
+  const logs = await (await sendLogCol()).find({}).sort({ ts: -1 }).limit(200).toArray();
+  const counters = await (await countersCol()).find({ day: today }).toArray();
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
@@ -60,7 +57,7 @@ export default async function LogPage() {
           </thead>
           <tbody>
             {logs.map(l => (
-              <tr key={l.id} style={{ borderBottom: '1px solid #eee' }}>
+              <tr key={l._id.toString()} style={{ borderBottom: '1px solid #eee' }}>
                 <td style={{ padding: '0.4rem 0.6rem', whiteSpace: 'nowrap' }}>
                   {new Date(l.ts).toISOString().replace('T', ' ').slice(0, 19)}
                 </td>

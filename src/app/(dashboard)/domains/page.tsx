@@ -1,21 +1,20 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
-import { getDb } from '@/db/client';
-import * as s from '@/db/schema';
+import { domainsCol, nextId } from '@/db/collections';
 import { encryptSecret } from '@/lib/crypto';
-import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 
 async function addDomain(formData: FormData) {
   'use server';
-  const db = getDb();
   const encKey = process.env.SMTP_ENC_KEY;
   if (!encKey) throw new Error('SMTP_ENC_KEY not set');
   const smtpPass = formData.get('smtpPass') as string;
   const smtpPassEnc = encryptSecret(smtpPass, encKey);
   const today = new Date().toISOString().slice(0, 10);
-  await db.insert(s.domains).values({
+  const id = await nextId('domains');
+  await (await domainsCol()).insertOne({
+    id,
     fromName: formData.get('fromName') as string,
     fromEmail: formData.get('fromEmail') as string,
     smtpHost: formData.get('smtpHost') as string,
@@ -37,14 +36,12 @@ async function toggleDomainStatus(formData: FormData) {
   const id = Number(formData.get('id'));
   const current = formData.get('current') as string;
   const next = current === 'active' ? 'paused' : 'active';
-  const db = getDb();
-  await db.update(s.domains).set({ status: next }).where(eq(s.domains.id, id));
+  await (await domainsCol()).updateOne({ id }, { $set: { status: next } });
   revalidatePath('/domains');
 }
 
 export default async function DomainsPage() {
-  const db = getDb();
-  const domains = await db.select().from(s.domains).orderBy(s.domains.id);
+  const domains = await (await domainsCol()).find({}).sort({ id: 1 }).toArray();
   const today = new Date().toISOString().slice(0, 10);
 
   return (

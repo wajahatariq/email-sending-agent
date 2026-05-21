@@ -135,3 +135,18 @@ export async function nextId(name: string): Promise<number> {
   );
   return res!.seq;
 }
+
+/**
+ * Reserve a contiguous block of `count` integer ids in a single atomic op.
+ * Returns the FIRST id of the block (block is [start, start+count-1]).
+ */
+export async function nextIdBlock(name: string, count: number): Promise<number> {
+  const db = await getDb();
+  const seq = db.collection<{ _id: string; seq: number }>('_sequences');
+  const res = await seq.findOneAndUpdate(
+    { _id: name },
+    { $inc: { seq: count } },
+    { upsert: true, returnDocument: 'after' },
+  );
+  return res!.seq - count + 1;
+}
