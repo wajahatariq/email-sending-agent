@@ -35,16 +35,23 @@ interface LiveDomain {
   paused: boolean; // set true if this domain hits an SMTP-config failure
 }
 
-export async function runTick(ports: TickPorts): Promise<TickResult> {
+export async function runTick(
+  ports: TickPorts,
+  opts?: { manual?: boolean },
+): Promise<TickResult> {
+  const manual = opts?.manual === true;
   const campaign = await ports.getActiveCampaign();
   if (!campaign) return { sent: 0, failed: 0, skipped: 'no-active-campaign' };
 
   const now = ports.now();
 
+  // Business-hours window only applies to automated ticks. Manual operator
+  // clicks (Send Now button) bypass the window check — the operator initiated
+  // the send and the timing is their decision.
   const ticksLeft = ticksRemaining(
     now, campaign.bhStart, campaign.bhEnd, TICK_MIN, campaign.timezone,
   );
-  if (ticksLeft <= 0) return { sent: 0, failed: 0, skipped: 'outside-window' };
+  if (!manual && ticksLeft <= 0) return { sent: 0, failed: 0, skipped: 'outside-window' };
 
   const totalSent = await ports.getTotalSentToday();
   const globalRemaining = campaign.globalDailyCap - totalSent;
@@ -71,10 +78,12 @@ export async function runTick(ports: TickPorts): Promise<TickResult> {
   if (domainBudget <= 0) return { sent: 0, failed: 0, skipped: 'domain-caps-reached' };
 
   const budget = Math.min(globalRemaining, domainBudget);
-  const allowance = Math.min(
-    tickAllowance(budget, ticksLeft, ports.rng),
-    BATCH_HARD_CAP,
-  );
+  // Manual mode = one-shot click: take the full remaining budget (still capped
+  // by BATCH_HARD_CAP so we finish within the 300s function timeout).
+  // Automated mode: spread the day's budget across remaining ticks via jitter.
+  const allowance = manual
+    ? Math.min(budget, BATCH_HARD_CAP)
+    : Math.min(tickAllowance(budget, ticksLeft, ports.rng), BATCH_HARD_CAP);
   if (allowance <= 0) return { sent: 0, failed: 0, skipped: 'no-allowance-this-tick' };
 
   const templates = await ports.getActiveTemplates();

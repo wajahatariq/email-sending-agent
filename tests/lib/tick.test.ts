@@ -278,4 +278,28 @@ describe('runTick', () => {
     expect(r.sent).toBe(2);
     expect(r.failed).toBe(1);
   });
+
+  // ---- Manual / "Send Now" button mode ----
+
+  it('#7 manual mode sends even outside the business window', async () => {
+    // now = 20:00Z is OUTSIDE the bh 9..17 window. In automated mode this
+    // returns skipped='outside-window' (covered by test #2 above). In manual
+    // mode the operator initiated the send, so the window check is bypassed.
+    const p = basePorts({ now: () => new Date('2026-05-19T20:00:00Z') });
+    const r = await runTick(p, { manual: true });
+    expect(r.skipped).toBeUndefined();
+    expect(r.sent).toBe(1);
+    expect(p.send).toHaveBeenCalledOnce();
+  });
+
+  it('#8 manual mode uses full remaining budget (capped by BATCH_HARD_CAP)', async () => {
+    // Manual click = one-shot. Send the full remaining budget in this call
+    // (still bounded by caps + BATCH_HARD_CAP=60). With 1 domain (cap 40),
+    // globalDailyCap 100, 50 pending recipients => budget=40 => sends 40
+    // (NOT spread across remaining ticks like the automated path would).
+    const p = basePorts({ getPendingRecipients: async () => manyPending(50) });
+    const r = await runTick(p, { manual: true });
+    expect(r.sent).toBe(40);
+    expect(p.recordSent).toHaveBeenCalledTimes(40);
+  });
 });

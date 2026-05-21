@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { getDb } from '@/db/client';
 import * as s from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { SendNowButton } from './SendNowButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,8 @@ export default async function CampaignsPage() {
         <Link href="/upload">Upload</Link>
         <Link href="/log">Log</Link>
       </nav>
+
+      <SendNowButton />
 
       {campaigns.length === 0 ? (
         <p>No campaigns yet. Use the <a href="/upload">Upload</a> page to create one.</p>

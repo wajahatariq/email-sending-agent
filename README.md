@@ -2,14 +2,14 @@
 
 ## Overview
 
-A cold-outreach sending engine built on Next.js 15 App Router, Drizzle ORM, Neon Postgres, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless: a Vercel Cron job at `/api/tick` drips emails within business hours; pressing "Start" on a campaign only flips its status to `active` — the cron does all actual sending.
+A cold-outreach sending engine built on Next.js 15 App Router, Drizzle ORM, Neon Postgres, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless and operator-driven: pressing **Start** on a campaign flips its status to `active`, then pressing the **Send Now** button on the dashboard fires one batch (caps, warmup, rotation, and suppression all enforced). Click again to send more. Designed to run on the Vercel **Hobby (free)** plan — no cron required.
 
 ---
 
 ## Prerequisites
 
 - **Node >= 20** (enforced in `package.json` `engines`)
-- **Vercel Pro plan** — **required**. Hobby accounts run crons at most once per day, which is far too coarse for paced outreach. The configured schedule (`*/10 9-17 * * 1-5`) fires every 10 minutes during business hours Mon–Fri and requires a Pro subscription to function correctly.
+- **Vercel Hobby (free) plan is sufficient.** Sending is triggered manually from the dashboard ("Send Now" button) — no scheduled cron is required.
 - Vercel CLI: `npm i -g vercel`
 
 ---
@@ -65,7 +65,7 @@ vercel env add COMPANY_ADDRESS production
 |---|---|
 | `DATABASE_URL` | Neon Postgres connection string (provided by Vercel Marketplace). |
 | `SMTP_ENC_KEY` | Base64-encoded 32-byte key used to AES-encrypt SMTP passwords stored in the DB. |
-| `CRON_SECRET` | Bearer token that `/api/tick` validates on every invocation. Vercel automatically attaches this as `Authorization: Bearer <CRON_SECRET>` when it fires the cron — set the same value in Vercel env vars and the platform handles injection. |
+| `CRON_SECRET` | Bearer token used in two places: (a) HMAC secret for the one-click unsubscribe token; (b) `/api/tick` validates a matching `Authorization: Bearer <CRON_SECRET>` header. The dashboard "Send Now" button invokes the tick directly via a server action (not via `/api/tick`), so this value only matters for `/api/tick` if you choose to call it externally. Still required — the unsubscribe token signing depends on it. |
 | `DASHBOARD_USER` | HTTP Basic Auth username for the web dashboard. |
 | `DASHBOARD_PASS` | HTTP Basic Auth password for the web dashboard. |
 | `APP_BASE_URL` | The deployed `https://` URL of this app (e.g. `https://your-project.vercel.app`). Used to construct the one-click unsubscribe link in every email. |
@@ -94,7 +94,7 @@ This requires `DATABASE_URL` to be set in the environment (or `.env.local`).
 vercel --prod
 ```
 
-After deployment, Vercel reads `vercel.json` and schedules the cron (`*/10 9-17 * * 1-5` — every 10 min, 09:00–17:59 UTC, Mon–Fri). This schedule **requires Vercel Pro**. The `functions` block in `vercel.json` also sets `maxDuration: 300`, which mirrors `export const maxDuration = 300` in `src/app/api/tick/route.ts` — for Next.js App Router the in-file export is the authoritative mechanism; the `vercel.json` entry is belt-and-suspenders.
+`vercel.json` no longer declares a `crons` block — sending is operator-triggered via the dashboard's **Send Now** button on the Hobby plan. The `functions` block sets `maxDuration: 300`, which mirrors `export const maxDuration = 300` in `src/app/api/tick/route.ts` — for Next.js App Router the in-file export is the authoritative mechanism; the `vercel.json` entry is belt-and-suspenders. If you later upgrade to Pro and want automatic paced sending, re-add a `crons` entry in `vercel.json` and the same `/api/tick` endpoint will work unchanged.
 
 ---
 
@@ -118,11 +118,14 @@ Complete every item before activating any sending domain. Skipping steps risks p
 |---|---|
 | Upload recipients (CSV) | Dashboard `/upload` — invalid/duplicate rows are reported but not imported. |
 | Add or edit email templates (A/B) | Dashboard `/templates` |
-| Start a campaign | Dashboard `/` → Start button — flips campaign `status` to `active`. The cron takes it from there. |
+| Start a campaign | Dashboard `/` → Start button — flips campaign `status` to `active`. The engine only considers `active` campaigns. |
+| **Send a batch (manual trigger)** | Dashboard `/` → **Send Now** button — fires one tick on the active campaign. Sends the full remaining budget (capped by global daily cap, per-domain cap, warmup, and `BATCH_HARD_CAP = 60` per click). Result is shown inline (sent / failed / skipped). Click again to send more. |
 | Stop/pause a campaign | Dashboard `/` → Stop button — pauses without losing progress. |
 | View send log + per-domain counters | Dashboard `/log` — shows today's sent count per domain alongside full send history. |
 
-The cron at `/api/tick` runs every 10 minutes (business hours only, UTC). Each tick selects eligible campaigns, picks a sending domain that has not hit its daily cap, respects warmup limits, and injects a small random jitter between sends to avoid burst patterns.
+**How "Send Now" works.** The button calls a server action that invokes `runTick(buildPorts(), { manual: true })` directly on Vercel Functions (Node.js runtime, ≤300s). Manual mode skips the business-hours window check (operator-driven) and takes the full remaining budget in one shot (not the per-tick "spread across remaining ticks" jitter that the automated path uses). Every other guarantee is unchanged: caps, warmup, domain rotation, template A/B rotation, suppression, hard-bounce → suppress, config-failure → pause domain, atomic counter increment.
+
+**Tradeoff vs. a cron.** No auto-pacing across the day. The operator decides cadence by clicking. For a true cold-outreach drip you would either upgrade to Vercel Pro and add a `crons` entry, or use an external scheduler (GitHub Actions cron, cron-job.org, etc.) to hit `/api/tick` with `Authorization: Bearer <CRON_SECRET>` on the cadence you want. The `/api/tick` endpoint is still wired and authenticated — only the schedule is gone.
 
 ---
 
@@ -178,5 +181,5 @@ Key architectural decisions:
 - **Drizzle ORM + Neon Postgres** — schema-first, migrations tracked in `drizzle/`.
 - **nodemailer** — SMTP sending; credentials encrypted at rest with `SMTP_ENC_KEY`.
 - **Basic-auth dashboard** — `DASHBOARD_USER` / `DASHBOARD_PASS` protect all dashboard routes via Next.js middleware.
-- **`/api/tick` cron** — the single sending loop; guarded by `CRON_SECRET` Bearer token.
+- **Manual "Send Now" trigger + `/api/tick` endpoint** — single sending loop; invoked directly via a Server Action on button click (Hobby plan), or callable externally with `Authorization: Bearer <CRON_SECRET>` if you wire up an external scheduler.
 - **`/api/unsub` one-click unsubscribe** — wired into `List-Unsubscribe` header; globally suppresses the address.
