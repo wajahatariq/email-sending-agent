@@ -1,9 +1,21 @@
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
-import * as schema from './schema';
+import { MongoClient, Db } from 'mongodb';
 
-export function getDb() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL not set');
-  return drizzle(neon(url), { schema });
+let clientPromise: Promise<MongoClient> | undefined =
+  (globalThis as { _mongoClient?: Promise<MongoClient> })._mongoClient;
+
+export async function getMongoClient(): Promise<MongoClient> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI not set');
+  if (!clientPromise) {
+    clientPromise = new MongoClient(uri).connect();
+    (globalThis as { _mongoClient?: Promise<MongoClient> })._mongoClient = clientPromise;
+  }
+  return clientPromise;
+}
+
+export async function getDb(): Promise<Db> {
+  const dbName = process.env.MONGODB_DB;
+  if (!dbName) throw new Error('MONGODB_DB not set');
+  const client = await getMongoClient();
+  return client.db(dbName);
 }
