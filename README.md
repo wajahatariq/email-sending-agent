@@ -2,7 +2,7 @@
 
 ## Overview
 
-A cold-outreach sending engine built on Next.js 15 App Router, MongoDB (official `mongodb` driver), MongoDB Atlas, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless and operator-driven: pressing **Start** on a campaign flips its status to `active`, then pressing the **Send Now** button on the dashboard fires one batch (caps, warmup, rotation, and suppression all enforced). Click again to send more. Designed to run on the Vercel **Hobby (free)** plan — no cron required.
+A cold-outreach sending engine built on Next.js 15 App Router, MongoDB (official `mongodb` driver), MongoDB Atlas, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless and operator-driven: pressing **Start** on a campaign flips its status to `active`, then pressing the **Send Now** button on the dashboard fires one batch (caps, warmup, rotation, and suppression all enforced). Click again to send more. Replies from recipients are ingested via IMAP polling and surfaced on the `/replies` dashboard page. Designed to run on the Vercel **Hobby (free)** plan — no cron required.
 
 ---
 
@@ -131,6 +131,7 @@ Complete every item before activating any sending domain. Skipping steps risks p
 | **Send a batch (manual trigger)** | Dashboard `/` → **Send Now** button — fires one tick on the active campaign. Sends the full remaining budget (capped by global daily cap, per-domain cap, warmup, and `BATCH_HARD_CAP = 60` per click). Result is shown inline (sent / failed / skipped). Click again to send more. |
 | Stop/pause a campaign | Dashboard `/` → Stop button — pauses without losing progress. |
 | View send log + per-domain counters | Dashboard `/log` — shows today's sent count per domain alongside full send history. |
+| **Check / view replies** | Dashboard `/replies` — lists the latest 200 ingested replies (matched and unmatched). **Check Replies Now** button triggers an immediate poll of all configured IMAP inboxes. |
 
 **How "Send Now" works.** The button calls a server action that invokes `runTick(buildPorts(), { manual: true })` directly on Vercel Functions (Node.js runtime, ≤300s). Manual mode skips the business-hours window check (operator-driven) and takes the full remaining budget in one shot (not the per-tick "spread across remaining ticks" jitter that the automated path uses). Every other guarantee is unchanged: caps, warmup, domain rotation, template A/B rotation, suppression, hard-bounce → suppress, config-failure → pause domain, atomic counter increment.
 
@@ -138,7 +139,50 @@ Complete every item before activating any sending domain. Skipping steps risks p
 
 ---
 
-## 8. Deliverability Discipline (Non-Negotiable)
+## 8. Reply Ingestion
+
+When a cold-outreach recipient replies, the engine can ingest that reply into the dashboard so you can track responses without leaving the tool.
+
+### How it works
+
+- IMAP credentials (`imapHost`, `imapPort`, `imapUser`, `imapPassEnc`) are stored per sending domain/account. The IMAP password is AES-encrypted at rest with the same `SMTP_ENC_KEY`.
+- `/api/poll-replies` connects to each configured account's IMAP INBOX, fetches messages newer than the stored per-account UID cursor, parses them, and stores them in the `replies` MongoDB collection (deduplicated on `domainId + imapUid`).
+- On a match (reply From-address → campaign recipient email), the recipient's `repliedAt` timestamp is stamped.
+- Replies that cannot be matched to a known recipient are still stored as unmatched, so no reply is silently dropped.
+
+No new environment variables are required — the endpoint reuses the existing `CRON_SECRET` and `SMTP_ENC_KEY`.
+
+### Enabling IMAP per account
+
+In the dashboard under `/domains`, fill in the four IMAP fields when adding or editing a sending account:
+
+| Field | Value |
+|---|---|
+| IMAP Host | For Hostinger email accounts: `imap.hostinger.com` |
+| IMAP Port | `993` (SSL/TLS) |
+| IMAP Username | Full email address (e.g. `sender@yourdomain.com`) |
+| IMAP Password | The mailbox password (stored AES-encrypted, same as SMTP) |
+
+Accounts without IMAP fields are silently skipped during polling — outbound sending is unaffected.
+
+### Triggering reply polling
+
+Replies are ingested in two ways, exactly like `/api/tick` for outbound sends:
+
+1. **Manual** — click **Check Replies Now** on the `/replies` dashboard page. Polls all configured inboxes immediately.
+2. **External scheduler** — have a scheduler (e.g. a second cron-job.org job) `GET /api/poll-replies` on whatever interval you want (15 minutes is a reasonable starting point):
+   ```
+   GET https://your-project.vercel.app/api/poll-replies
+   Authorization: Bearer <CRON_SECRET>
+   ```
+
+### Viewing replies
+
+Open `/replies` in the dashboard. The page shows the latest 200 replies, newest first, including the sender address, subject, snippet, timestamp, and whether the reply was matched to a campaign recipient.
+
+---
+
+## 9. Deliverability Discipline (Non-Negotiable)
 
 - Only send to addresses for which you have a **lawful basis** to contact (opt-in, existing business relationship, etc.).
 - **Honor every unsubscribe.** The one-click unsubscribe endpoint (`/api/unsub`) is wired into every email's `List-Unsubscribe` header and footer link. Unsubscribes are permanent and global — the recipient is suppressed across all campaigns.
@@ -149,7 +193,7 @@ Complete every item before activating any sending domain. Skipping steps risks p
 
 ---
 
-## 9. Compliance
+## 10. Compliance
 
 ### CAN-SPAM (US)
 - `COMPANY_ADDRESS` **must** be a real, valid physical postal address. The CAN-SPAM Act (15 U.S.C. § 7704(a)(5)) requires a valid postal address in every commercial email. The footer is mandatory and cannot be disabled.
@@ -162,7 +206,7 @@ Complete every item before activating any sending domain. Skipping steps risks p
 
 ---
 
-## 10. Runtime Note: Timezones
+## 11. Runtime Note: Timezones
 
 Campaign business-hours logic uses IANA timezone names resolved via the JavaScript `Intl` API (e.g. `America/New_York`). Vercel's Node.js runtime ships full ICU data, so named timezone zones work correctly in production.
 
@@ -170,7 +214,7 @@ If running locally on a Node.js build compiled without full ICU (common in some 
 
 ---
 
-## 11. Running Tests
+## 12. Running Tests
 
 ```bash
 npm run test
@@ -180,7 +224,7 @@ Runs the full Vitest suite (unit + integration). No real emails are ever sent in
 
 ---
 
-## 12. Architecture & Design Docs
+## 13. Architecture & Design Docs
 
 - **Design spec:** [`docs/superpowers/specs/2026-05-19-email-sending-agent-design.md`](docs/superpowers/specs/2026-05-19-email-sending-agent-design.md)
 - **Implementation plan:** [`docs/superpowers/plans/2026-05-19-email-sending-agent.md`](docs/superpowers/plans/2026-05-19-email-sending-agent.md)
@@ -192,3 +236,4 @@ Key architectural decisions:
 - **Basic-auth dashboard** — `DASHBOARD_USER` / `DASHBOARD_PASS` protect all dashboard routes via Next.js middleware.
 - **Manual "Send Now" trigger + `/api/tick` endpoint** — single sending loop; invoked directly via a Server Action on button click (Hobby plan), or callable externally with `Authorization: Bearer <CRON_SECRET>` if you wire up an external scheduler.
 - **`/api/unsub` one-click unsubscribe** — wired into `List-Unsubscribe` header; globally suppresses the address.
+- **Reply ingestion — `/api/poll-replies` + `replies` collection** — polls each sending account's IMAP inbox (when IMAP credentials are configured), stores ingested replies in the `replies` collection, and matches them back to campaign recipients by From-address. Triggered manually via the `/replies` dashboard page or by an external scheduler hitting `/api/poll-replies` with `Authorization: Bearer <CRON_SECRET>`. Read-only ingestion — no auto-replies are sent.

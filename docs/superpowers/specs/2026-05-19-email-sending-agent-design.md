@@ -13,7 +13,7 @@ The agent does **not** write copy, source leads, or read replies. The operator s
 ### Non-goals (YAGNI)
 
 - AI-generated per-lead copywriting
-- Reply detection / inbox reading / conversation handling
+- Reply detection / inbox reading / conversation handling *(added post-v1 — see §11)*
 - Lead sourcing or third-party email verification
 - Multi-tenant SaaS, advanced analytics beyond the send log
 - Inbox-read bounce processing (optional future enhancement)
@@ -126,3 +126,11 @@ The following two spec requirements ship deferred in v1, explicitly accepted by 
 Neither deferral affects the cap, suppression, authentication-gating, secret-handling, one-click-unsubscribe, mandatory-footer, or no-IP-evasion guarantees, all of which are implemented and tested.
 
 3. **DB engine changed to MongoDB Atlas (2026-05-22)** at owner request — replaces Postgres/Neon/Drizzle. Cap-enforcement guarantees are preserved (atomic `$inc` upsert + multi-doc transactions). No deliverability behavior changed.
+
+4. **Reply ingestion added post-v1 (2026-05-22)** at owner request. Originally a non-goal (§1), reply ingestion is now implemented as a read-only IMAP polling feature:
+   - Each sending domain/account can optionally carry IMAP credentials (`imapHost`, `imapPort`, `imapUser`, `imapPassEnc`), set via the `/domains` form. The IMAP password is AES-encrypted at rest with the same `SMTP_ENC_KEY`.
+   - `/api/poll-replies` — Bearer `CRON_SECRET`-authenticated endpoint (same auth pattern as `/api/tick`). Connects to each configured account's IMAP INBOX, fetches messages with UID greater than the stored per-account cursor, parses them, matches sender From-address to campaign recipient email addresses, and stores results in a new `replies` MongoDB collection (deduplicated on `(domainId, imapUid)`). Matched recipients have `repliedAt` stamped on the `recipients` document.
+   - `/replies` dashboard page — lists the latest 200 ingested replies (matched and unmatched) and provides a **Check Replies Now** manual trigger button.
+   - Polling is triggered manually via the button or by an external scheduler hitting `/api/poll-replies` with `Authorization: Bearer <CRON_SECRET>` — exactly the same operator pattern as `/api/tick` for outbound sends.
+   - No new environment variables — reuses `CRON_SECRET` and `SMTP_ENC_KEY`.
+   - Scope: read-only ingestion only. No auto-replies are sent, and there is no conversation threading beyond storing `In-Reply-To` / `messageId` headers on ingested reply documents.
