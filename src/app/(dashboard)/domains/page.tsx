@@ -14,15 +14,20 @@ async function addDomain(formData: FormData) {
   const today = new Date().toISOString().slice(0, 10);
   const id = await nextId('domains');
 
-  const imapHost = (formData.get('imapHost') as string | null) ?? '';
-  const imapFields = imapHost
-    ? {
-        imapHost,
-        imapPort: Number(formData.get('imapPort') ?? 993),
-        imapUser: formData.get('imapUser') as string,
-        imapPassEnc: encryptSecret(formData.get('imapPass') as string, encKey),
-      }
-    : {};
+  const imapHost = ((formData.get('imapHost') as string | null) ?? '').trim();
+  const imapUser = ((formData.get('imapUser') as string | null) ?? '').trim();
+  const imapPass = (formData.get('imapPass') as string | null) ?? '';
+  // IMAP is configured only when host, user, AND password are all provided.
+  // Partial input is ignored rather than throwing (encryptSecret rejects '').
+  const imapFields =
+    imapHost && imapUser && imapPass
+      ? {
+          imapHost,
+          imapPort: Number(formData.get('imapPort') ?? 993),
+          imapUser,
+          imapPassEnc: encryptSecret(imapPass, encKey),
+        }
+      : {};
 
   await (await domainsCol()).insertOne({
     id,
