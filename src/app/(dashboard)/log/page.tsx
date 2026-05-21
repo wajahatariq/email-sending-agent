@@ -18,6 +18,7 @@ export default async function LogPage() {
         <Link href="/templates">Templates</Link>
         <Link href="/upload">Upload</Link>
         <Link href="/log">Log</Link>
+        <Link href="/replies">Replies</Link>
       </nav>
 
       <h2>Today&apos;s Per-Domain Counters ({today})</h2>

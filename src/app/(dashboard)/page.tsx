@@ -25,6 +25,7 @@ export default async function CampaignsPage() {
         <Link href="/templates">Templates</Link>
         <Link href="/upload">Upload</Link>
         <Link href="/log">Log</Link>
+        <Link href="/replies">Replies</Link>
       </nav>
 
       <SendNowButton />

@@ -13,6 +13,17 @@ async function addDomain(formData: FormData) {
   const smtpPassEnc = encryptSecret(smtpPass, encKey);
   const today = new Date().toISOString().slice(0, 10);
   const id = await nextId('domains');
+
+  const imapHost = (formData.get('imapHost') as string | null) ?? '';
+  const imapFields = imapHost
+    ? {
+        imapHost,
+        imapPort: Number(formData.get('imapPort') ?? 993),
+        imapUser: formData.get('imapUser') as string,
+        imapPassEnc: encryptSecret(formData.get('imapPass') as string, encKey),
+      }
+    : {};
+
   await (await domainsCol()).insertOne({
     id,
     fromName: formData.get('fromName') as string,
@@ -27,6 +38,7 @@ async function addDomain(formData: FormData) {
     spfVerified: formData.get('spfVerified') === 'on',
     dkimVerified: formData.get('dkimVerified') === 'on',
     dmarcVerified: formData.get('dmarcVerified') === 'on',
+    ...imapFields,
   });
   revalidatePath('/domains');
 }
@@ -53,6 +65,7 @@ export default async function DomainsPage() {
         <Link href="/templates">Templates</Link>
         <Link href="/upload">Upload</Link>
         <Link href="/log">Log</Link>
+        <Link href="/replies">Replies</Link>
       </nav>
 
       <h2>Existing Domains</h2>
@@ -62,7 +75,7 @@ export default async function DomainsPage() {
         <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '2rem' }}>
           <thead>
             <tr>
-              {['ID', 'From Email', 'Status', 'Daily Cap', 'Warmup Start', 'SPF', 'DKIM', 'DMARC', 'SMTP Pass', 'Actions'].map(h => (
+              {['ID', 'From Email', 'Status', 'Daily Cap', 'Warmup Start', 'SPF', 'DKIM', 'DMARC', 'SMTP Pass', 'IMAP', 'Actions'].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.6rem', borderBottom: '2px solid #ccc', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -90,6 +103,11 @@ export default async function DomainsPage() {
                 <td style={{ padding: '0.4rem 0.6rem' }}>
                   <span style={{ color: '#888', fontStyle: 'italic' }}>
                     {d.smtpPassEnc ? 'set' : 'unset'}
+                  </span>
+                </td>
+                <td style={{ padding: '0.4rem 0.6rem' }}>
+                  <span style={{ color: '#888', fontStyle: 'italic' }}>
+                    {d.imapPassEnc ? 'set' : 'unset'}
                   </span>
                 </td>
                 <td style={{ padding: '0.4rem 0.6rem' }}>
@@ -152,6 +170,32 @@ export default async function DomainsPage() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input type="checkbox" name="dmarcVerified" /> DMARC Verified
+          </label>
+        </fieldset>
+        <fieldset style={{ border: '1px solid #ccc', padding: '0.75rem', borderRadius: '0.25rem' }}>
+          <legend>IMAP (for reply ingestion — optional)</legend>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', color: '#6b7280' }}>
+            Leave IMAP Host blank to skip reply polling for this domain.
+          </p>
+          <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+            IMAP Host
+            <input type="text" name="imapHost" placeholder="imap.hostinger.com"
+              style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
+          </label>
+          <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+            IMAP Port
+            <input type="number" name="imapPort" placeholder="993" defaultValue={993}
+              style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
+          </label>
+          <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+            IMAP User
+            <input type="text" name="imapUser" placeholder="usually the full email address"
+              style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
+          </label>
+          <label style={{ display: 'block' }}>
+            IMAP Password
+            <input type="password" name="imapPass"
+              style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
           </label>
         </fieldset>
         <button type="submit" style={{ padding: '0.4rem 1rem', cursor: 'pointer', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '0.25rem' }}>

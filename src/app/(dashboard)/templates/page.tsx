@@ -31,6 +31,7 @@ export default async function TemplatesPage() {
         <Link href="/templates">Templates</Link>
         <Link href="/upload">Upload</Link>
         <Link href="/log">Log</Link>
+        <Link href="/replies">Replies</Link>
       </nav>
 
       <h2>Existing Templates</h2>
