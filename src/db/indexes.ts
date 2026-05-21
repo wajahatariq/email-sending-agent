@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+// Load .env.local first (Next.js convention for local secrets), then .env.
+config({ path: '.env.local' });
+config();
 import { getDb } from './client';
 
 export async function ensureIndexes(): Promise<void> {
