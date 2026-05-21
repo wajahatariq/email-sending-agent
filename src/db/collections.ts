@@ -20,6 +20,14 @@ export interface DomainDoc {
   spfVerified: boolean;
   dkimVerified: boolean;
   dmarcVerified: boolean;
+  // IMAP (reply ingestion) — optional. A domain without IMAP config is
+  // skipped by the reply poller. lastUid/uidValidity track incremental fetch.
+  imapHost?: string;
+  imapPort?: number;
+  imapUser?: string;
+  imapPassEnc?: string;
+  lastUid?: number;
+  uidValidity?: number;
 }
 
 export interface TemplateDoc {
@@ -64,6 +72,22 @@ export interface RecipientDoc {
   attempts: number;
   failReason: string | null;
   sentAt: Date | null;
+  repliedAt?: Date | null; // stamped when a reply from this recipient is ingested
+}
+
+export interface ReplyDoc {
+  _id?: ObjectId;
+  domainId: number; // sending account whose inbox received this reply
+  recipientId: number | null; // matched campaign recipient, or null if unmatched
+  fromEmail: string;
+  fromName: string;
+  subject: string;
+  snippet: string; // plaintext body, truncated (~4KB)
+  receivedAt: Date;
+  messageId: string | null;
+  inReplyTo: string | null;
+  imapUid: number; // UID within the account mailbox (dedup key with domainId)
+  createdAt: Date;
 }
 
 export interface SendLogDoc {
@@ -119,6 +143,10 @@ export async function suppressionCol(): Promise<Collection<SuppressionDoc>> {
 
 export async function countersCol(): Promise<Collection<CounterDoc>> {
   return (await getDb()).collection<CounterDoc>('counters');
+}
+
+export async function repliesCol(): Promise<Collection<ReplyDoc>> {
+  return (await getDb()).collection<ReplyDoc>('replies');
 }
 
 // ---------------------------------------------------------------------------

@@ -15,8 +15,16 @@ export async function ensureIndexes(): Promise<void> {
 
   // Query-pattern indexes
   await db.collection('recipients').createIndex({ campaignId: 1, status: 1 });
+  await db.collection('recipients').createIndex({ email: 1 });
   await db.collection('send_log').createIndex({ ts: -1 });
   await db.collection('counters').createIndex({ domainId: 1, day: 1 });
+
+  // replies: dedup by (domainId, imapUid); list newest-first
+  await db.collection('replies').createIndex(
+    { domainId: 1, imapUid: 1 },
+    { unique: true },
+  );
+  await db.collection('replies').createIndex({ receivedAt: -1 });
 
   // suppression: keyed by _id (email) — no extra index needed
   // counters: also keyed by _id — compound index above covers query pattern
