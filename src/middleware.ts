@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkBasicAuth } from './lib/auth';
 
-export const config = { matcher: ['/((?!api/unsub(?:/|$)|api/tick(?:/|$)|_next/static|_next/image|favicon\\.ico).*)'] };
+export const config = { matcher: ['/((?!api/unsub(?:/|$)|api/tick(?:/|$)|api/poll-replies(?:/|$)|_next/static|_next/image|favicon\\.ico).*)'] };
 
 export function middleware(req: NextRequest) {
   if (checkBasicAuth(req.headers.get('authorization'), {
