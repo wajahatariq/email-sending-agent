@@ -2,7 +2,7 @@
 
 ## Overview
 
-A cold-outreach sending engine built on Next.js 15 App Router, Drizzle ORM, Neon Postgres, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless and operator-driven: pressing **Start** on a campaign flips its status to `active`, then pressing the **Send Now** button on the dashboard fires one batch (caps, warmup, rotation, and suppression all enforced). Click again to send more. Designed to run on the Vercel **Hobby (free)** plan — no cron required.
+A cold-outreach sending engine built on Next.js 15 App Router, MongoDB (official `mongodb` driver), MongoDB Atlas, and nodemailer. It protects sender-domain reputation through per-domain daily caps, warmup ramp-up, SMTP-credential rotation, hard-bounce suppression, and mandatory CAN-SPAM footer compliance. The architecture is fully serverless and operator-driven: pressing **Start** on a campaign flips its status to `active`, then pressing the **Send Now** button on the dashboard fires one batch (caps, warmup, rotation, and suppression all enforced). Click again to send more. Designed to run on the Vercel **Hobby (free)** plan — no cron required.
 
 ---
 
@@ -16,16 +16,23 @@ A cold-outreach sending engine built on Next.js 15 App Router, Drizzle ORM, Neon
 
 ## 1. Provision the Database
 
-Neon Postgres is provisioned through the Vercel Marketplace (no separate Neon account required):
+MongoDB Atlas is the database. The quickest path is the **Vercel Marketplace MongoDB Atlas integration**; alternatively create a free cluster directly at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas).
 
-1. Open your Vercel dashboard → **Storage** → **Connect Store** → choose **Neon**.
-2. Link it to this project.
+**Via Vercel Marketplace:**
+1. Open your Vercel dashboard → **Storage** → **Connect Store** → choose **MongoDB Atlas**.
+2. Link it to this project and follow the prompts to create a free **M0** cluster.
 3. Pull the env vars locally:
    ```bash
    vercel link
    vercel env pull .env.local
    ```
-   This writes `DATABASE_URL` (and any other Neon vars) into `.env.local`.
+
+**Via Atlas directly:**
+1. Sign up at [cloud.mongodb.com](https://cloud.mongodb.com), create a free **M0** cluster.
+2. Under **Database Access**, create a database user with read/write permissions.
+3. Under **Network Access**, allow connections from `0.0.0.0/0` (required for Vercel serverless) or add Vercel's outbound IP ranges.
+4. Click **Connect** → **Drivers** → copy the connection string (e.g. `mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/`).
+5. Set `MONGODB_URI` and `MONGODB_DB` (use `email_sending_agent`) as env vars in Vercel and locally in `.env.local`.
 
 ---
 
@@ -51,7 +58,8 @@ Set every variable below both in Vercel and locally in `.env.local`.
 
 **Add to Vercel production:**
 ```bash
-vercel env add DATABASE_URL production
+vercel env add MONGODB_URI production
+vercel env add MONGODB_DB production
 vercel env add SMTP_ENC_KEY production
 vercel env add CRON_SECRET production
 vercel env add DASHBOARD_USER production
@@ -63,7 +71,8 @@ vercel env add COMPANY_ADDRESS production
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Neon Postgres connection string (provided by Vercel Marketplace). |
+| `MONGODB_URI` | MongoDB Atlas connection string (e.g. `mongodb+srv://USER:PASS@cluster.mongodb.net/?retryWrites=true&w=majority`). |
+| `MONGODB_DB` | MongoDB database name — use `email_sending_agent`. |
 | `SMTP_ENC_KEY` | Base64-encoded 32-byte key used to AES-encrypt SMTP passwords stored in the DB. |
 | `CRON_SECRET` | Bearer token used in two places: (a) HMAC secret for the one-click unsubscribe token; (b) `/api/tick` validates a matching `Authorization: Bearer <CRON_SECRET>` header. The dashboard "Send Now" button invokes the tick directly via a server action (not via `/api/tick`), so this value only matters for `/api/tick` if you choose to call it externally. Still required — the unsubscribe token signing depends on it. |
 | `DASHBOARD_USER` | HTTP Basic Auth username for the web dashboard. |
@@ -76,15 +85,15 @@ vercel env add COMPANY_ADDRESS production
 
 ---
 
-## 4. Apply Database Migrations
+## 4. Create Indexes
 
-Migrations are tracked under `drizzle/` and committed to git. Apply them before the first run (and after any schema-changing PR):
+MongoDB is schemaless — there are no SQL migrations. Collections are created automatically on first write. However, you should create the performance indexes once before (or shortly after) the first run:
 
 ```bash
-npx drizzle-kit migrate
+npm run db:indexes
 ```
 
-This requires `DATABASE_URL` to be set in the environment (or `.env.local`).
+This requires `MONGODB_URI` and `MONGODB_DB` to be set in the environment (or `.env.local`). The script is idempotent — safe to re-run.
 
 ---
 
@@ -178,7 +187,7 @@ Runs the full Vitest suite (unit + integration). No real emails are ever sent in
 
 Key architectural decisions:
 - **Next.js 15 App Router** — all UI and API routes under `src/app/`.
-- **Drizzle ORM + Neon Postgres** — schema-first, migrations tracked in `drizzle/`.
+- **MongoDB Atlas via the official `mongodb` driver** — collections defined in `src/db/collections.ts`, integer ids preserved via an atomic `_sequences` collection, per-domain daily cap enforced by an atomic `$inc` upsert on the `counters` collection (keyed `${domainId}:${day}`). `recordSent`/`recordFailure` writes are wrapped in MongoDB multi-document transactions (Atlas replica set).
 - **nodemailer** — SMTP sending; credentials encrypted at rest with `SMTP_ENC_KEY`.
 - **Basic-auth dashboard** — `DASHBOARD_USER` / `DASHBOARD_PASS` protect all dashboard routes via Next.js middleware.
 - **Manual "Send Now" trigger + `/api/tick` endpoint** — single sending loop; invoked directly via a Server Action on button click (Hobby plan), or callable externally with `Authorization: Bearer <CRON_SECRET>` if you wire up an external scheduler.

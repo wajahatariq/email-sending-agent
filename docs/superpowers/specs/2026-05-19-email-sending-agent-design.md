@@ -35,7 +35,7 @@ Next.js (App Router) deployed on Vercel. Serverless — no long-running process.
 
 1. **Dashboard (UI)** — CSV upload; manage sending domains and SMTP creds; manage A/B templates; configure caps, business-hours window, timezone, jitter; Start/Stop campaign; view send log, counters, and domain health.
 2. **`/api/tick` (cron worker)** — stateless drip worker invoked by Vercel Cron every ~10 minutes. Reads state, computes allowance, sends a bounded batch, updates state, exits within the 300s function limit.
-3. **Postgres (Neon via Vercel Marketplace)** — single source of truth for all state.
+3. **MongoDB Atlas (via the official `mongodb` driver)** — single source of truth for all state.
 
 Sending uses `nodemailer` over per-domain SMTP, on the Node.js runtime (Fluid Compute, not edge).
 
@@ -45,9 +45,11 @@ Sending uses `nodemailer` over per-domain SMTP, on the Node.js runtime (Fluid Co
 
 - Sub-daily Vercel Cron requires the **Vercel Pro plan** (Hobby cron ≈ once/day, too coarse).
 - Each tick sends a **bounded batch** sized to finish well under the 300s function timeout; remainder waits for the next tick.
-- Vercel has no persistent local disk — all state lives in Postgres.
+- Vercel has no persistent local disk — all state lives in MongoDB Atlas.
 
-## 4. Data Model (Postgres)
+## 4. Data Model
+
+**Implementation note (2026-05-22):** migrated from Postgres to MongoDB Atlas. The 7 tables below are implemented as MongoDB collections (`domains`, `templates`, `campaigns`, `recipients`, `send_log`, `suppression`, `counters`). Integer primary keys are preserved via an atomic `_sequences` collection. `suppression` is keyed by the lowercased email as `_id`; `counters` is keyed by `${domainId}:${day}` as `_id`. The Postgres `ON CONFLICT` atomic counter is now an atomic `$inc` upsert; the single-transaction `db.batch` writes are now MongoDB multi-document transactions.
 
 - **`domains`** — id, from_name, from_email, smtp_host, smtp_port, smtp_user, `smtp_pass_encrypted`, daily_cap, warmup_start_date, status (active/paused), spf_verified, dkim_verified, dmarc_verified
 - **`templates`** — id, label, subject, body_html, body_text, weight, active
@@ -66,7 +68,7 @@ Sending uses `nodemailer` over per-domain SMTP, on the Node.js runtime (Fluid Co
 5. **Select recipients** — status=pending, not in suppression, deduped, randomized order.
 6. **Rotate** — round-robin across eligible domains (load balance + risk isolation); weighted-random template (A/B footprint reduction).
 7. **Send** — via that domain's SMTP, with inter-send micro-jitter within the batch.
-8. **Record** — write send_log, set recipient status/sent_at/template/domain, increment `counters` inside a DB transaction (prevents cap overrun under concurrent/overlapping ticks).
+8. **Record** — write send_log, set recipient status/sent_at/template/domain, increment `counters` via an atomic `$inc` upsert (keyed `${domainId}:${day}`), all wrapped in a MongoDB multi-document transaction (prevents cap overrun under concurrent/overlapping ticks).
 9. **Stop conditions** — campaign → done when no pending recipients; domain → auto-paused on auth failure or hard-bounce rate over threshold.
 
 ### Data flow
@@ -96,7 +98,7 @@ CSV upload → parse / validate / dedupe → `recipients(pending)`. Click **Star
 - **Domain hard-bounce rate** over threshold (default 5% of that domain's sends): domain auto-paused, dashboard alert. Reputation protection — core goal. **(v1 deviation — see §11: rate-based domain auto-pause deferred to v2, owner-accepted; per-recipient hard-bounce suppression IS implemented.)**
 - **Auth missing** (SPF/DKIM/DMARC unverified): domain blocked from sending until verified (pre-send guard).
 - **Cron overrun guard**: batch sized to complete < 300s; remainder waits next tick.
-- **Concurrency**: counter increment in a DB transaction → no cap overrun on overlapping ticks.
+- **Concurrency**: counter increment via atomic `$inc` upsert inside a MongoDB multi-document transaction → no cap overrun on overlapping ticks.
 - Every failure logged with reason in `send_log`.
 
 ## 9. Testing
@@ -110,7 +112,7 @@ CSV upload → parse / validate / dedupe → `recipients(pending)`. Click **Star
 
 - Exact warmup curve constants and per-inbox default caps (tunable config).
 - Dashboard auth mechanism choice (env credential vs Clerk) — env credential for v1.
-- Neon provisioning via Vercel Marketplace.
+- MongoDB Atlas provisioning via Vercel Marketplace or atlas.mongodb.com.
 - Concrete cron interval and business-hours defaults.
 
 ## 11. v1 Implementation Deviations (owner-accepted 2026-05-19)
@@ -122,3 +124,5 @@ The following two spec requirements ship deferred in v1, explicitly accepted by 
 2. **Domain hard-bounce-rate auto-pause (§8).** The spec calls for auto-pausing a domain when its hard-bounce rate exceeds a threshold. v1 implements per-recipient hard-bounce suppression (the recipient is suppressed and a `fail-hard` audit row written) and SMTP-config-failure domain pause, but **not** aggregate bounce-rate-based domain pause. Deferred to v2.
 
 Neither deferral affects the cap, suppression, authentication-gating, secret-handling, one-click-unsubscribe, mandatory-footer, or no-IP-evasion guarantees, all of which are implemented and tested.
+
+3. **DB engine changed to MongoDB Atlas (2026-05-22)** at owner request — replaces Postgres/Neon/Drizzle. Cap-enforcement guarantees are preserved (atomic `$inc` upsert + multi-doc transactions). No deliverability behavior changed.
