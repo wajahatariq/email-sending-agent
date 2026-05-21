@@ -1,48 +1,73 @@
-import { and, eq, sql } from 'drizzle-orm';
-import { getDb } from '../db/client';
-import * as s from '../db/schema';
+import { getMongoClient } from '../db/client';
+import {
+  campaignsCol,
+  countersCol,
+  domainsCol,
+  recipientsCol,
+  sendLogCol,
+  suppressionCol,
+  templatesCol,
+  type SendLogDoc,
+} from '../db/collections';
 import { decryptSecret } from './crypto';
 import { makeTransport, sendOne } from './sender';
 import type { TickPorts } from './tick';
-
-/**
- * Documented/tested string form of the atomic counter upsert.
- *
- * This is the `$1,$2` placeholder shape PostgreSQL receives — it proves the
- * statement is PARAMETERIZED (the increment is `counters.sent_count + 1`, never
- * built from request-derived strings). The live execution below uses drizzle's
- * `sql` template with bound params so neon receives this exact statement with
- * `$1`/`$2` bound out-of-band (no manual `.replace('$1', value)` interpolation,
- * which is injection-shaped and was explicitly flagged).
- */
-export function incrementCounterSql(): string {
-  return 'insert into counters (domain_id, day, sent_count) values ($1, $2, 1) ' +
-    'on conflict (domain_id, day) do update set sent_count = counters.sent_count + 1';
-}
-
-/**
- * Documented/tested string form of the atomic soft-fail status CASE expression.
- *
- * The pre-update column value is `attempts`, so `attempts + 1 >= 3` correctly
- * evaluates whether the NEW attempts value (after increment) reaches the
- * failure threshold — all within a single atomic UPDATE, no prior SELECT.
- */
-export function softFailStatusSql(): string {
-  return "case when attempts + 1 >= 3 then 'failed' else 'pending' end";
-}
 
 /** UTC date string (YYYY-MM-DD) for `counters.day` and "sent today" queries. */
 const today = (): string => new Date().toISOString().slice(0, 10);
 
 /**
- * Parameterized atomic counter upsert as a drizzle `sql` chunk.
- * `${domainId}` / `${day}` are BOUND params ($1/$2), not interpolated text.
+ * PURE helper — the exact filter + update objects for the atomic counter upsert.
+ *
+ * The counter is the cap-enforcement primitive: it MUST be a single atomic
+ * `$inc` upsert so concurrent ticks can never lose a write or over-count. This
+ * helper is exported so chunk 4 can unit-test the shape without a live Mongo,
+ * and `recordSent` calls it directly so the TESTED object IS the one executed.
+ *
+ * `_id` is `${domainId}:${day}` — unique per domain per UTC day. `$inc` creates
+ * the field at 0 then adds 1 on insert; `$setOnInsert` stamps the immutable
+ * coordinates only when the doc is first created.
  */
-const counterUpsert = (domainId: number, day: string) =>
-  sql`insert into counters (domain_id, day, sent_count) values (${domainId}, ${day}, 1) on conflict (domain_id, day) do update set sent_count = counters.sent_count + 1`;
+export function counterUpsert(
+  domainId: number,
+  day: string,
+): { filter: { _id: string }; update: object } {
+  return {
+    filter: { _id: `${domainId}:${day}` },
+    update: {
+      $inc: { sentCount: 1 },
+      $setOnInsert: { domainId, day },
+    },
+  };
+}
+
+/**
+ * PURE helper — the aggregation-pipeline update for the soft-fail branch.
+ *
+ * A pipeline update lets a single atomic statement reference the pre-update
+ * `attempts` value: it increments attempts by 1 and flips status to 'failed'
+ * once the NEW attempts value (`$attempts + 1`) reaches 3, else keeps it
+ * 'pending' for retry. No prior SELECT, so concurrent soft fails cannot race.
+ */
+export function softFailUpdatePipeline(error: string | null): object[] {
+  return [
+    {
+      $set: {
+        attempts: { $add: ['$attempts', 1] },
+        failReason: error,
+        status: {
+          $cond: [
+            { $gte: [{ $add: ['$attempts', 1] }, 3] },
+            'failed',
+            'pending',
+          ],
+        },
+      },
+    },
+  ];
+}
 
 export function buildPorts(): TickPorts {
-  const db = getDb();
   const encKey = process.env.SMTP_ENC_KEY!;
 
   return {
@@ -50,12 +75,8 @@ export function buildPorts(): TickPorts {
     rng: Math.random,
 
     getActiveCampaign: async () => {
-      const rows = await db
-        .select()
-        .from(s.campaigns)
-        .where(eq(s.campaigns.status, 'active'))
-        .limit(1);
-      const c = rows[0];
+      const col = await campaignsCol();
+      const c = await col.findOne({ status: 'active' });
       return c
         ? {
             id: c.id,
@@ -70,24 +91,19 @@ export function buildPorts(): TickPorts {
     },
 
     getEligibleDomains: async () => {
-      const ds = await db
-        .select()
-        .from(s.domains)
-        .where(
-          and(
-            eq(s.domains.status, 'active'),
-            eq(s.domains.spfVerified, true),
-            eq(s.domains.dkimVerified, true),
-            eq(s.domains.dmarcVerified, true),
-          ),
-        );
+      const [dCol, cCol] = await Promise.all([domainsCol(), countersCol()]);
+      const ds = await dCol
+        .find({
+          status: 'active',
+          spfVerified: true,
+          dkimVerified: true,
+          dmarcVerified: true,
+        })
+        .toArray();
       const day = today();
       const out: Awaited<ReturnType<TickPorts['getEligibleDomains']>> = [];
       for (const d of ds) {
-        const cnt = await db
-          .select({ c: s.counters.sentCount })
-          .from(s.counters)
-          .where(and(eq(s.counters.domainId, d.id), eq(s.counters.day, day)));
+        const cnt = await cCol.findOne({ _id: `${d.id}:${day}` });
         out.push({
           id: d.id,
           fromName: d.fromName,
@@ -100,36 +116,29 @@ export function buildPorts(): TickPorts {
           },
           dailyCap: d.dailyCap,
           warmupStart: new Date(d.warmupStartDate),
-          sentToday: cnt[0]?.c ?? 0,
+          sentToday: cnt?.sentCount ?? 0,
         });
       }
       return out;
     },
 
     getSuppressed: async () => {
-      const rows = await db
-        .select({ email: s.suppression.email })
-        .from(s.suppression);
-      return new Set(rows.map((r) => r.email.toLowerCase()));
+      const col = await suppressionCol();
+      const rows = await col.find({}, { projection: { _id: 1 } }).toArray();
+      // `_id` is the already-lowercased email; the suppression lib also
+      // self-normalizes so this Set is the canonical lookup set.
+      return new Set(rows.map((r) => r._id));
     },
 
     getPendingRecipients: async (limit) => {
-      const camp = await db
-        .select()
-        .from(s.campaigns)
-        .where(eq(s.campaigns.status, 'active'))
-        .limit(1);
-      if (!camp[0]) return [];
-      const rows = await db
-        .select()
-        .from(s.recipients)
-        .where(
-          and(
-            eq(s.recipients.campaignId, camp[0].id),
-            eq(s.recipients.status, 'pending'),
-          ),
-        )
-        .limit(limit);
+      const campCol = await campaignsCol();
+      const camp = await campCol.findOne({ status: 'active' });
+      if (!camp) return [];
+      const rCol = await recipientsCol();
+      const rows = await rCol
+        .find({ campaignId: camp.id, status: 'pending' })
+        .limit(limit)
+        .toArray();
       return rows.map((r) => ({
         id: r.id,
         email: r.email,
@@ -141,10 +150,8 @@ export function buildPorts(): TickPorts {
     },
 
     getActiveTemplates: async () => {
-      const rows = await db
-        .select()
-        .from(s.templates)
-        .where(eq(s.templates.active, true));
+      const col = await templatesCol();
+      const rows = await col.find({ active: true }).toArray();
       return rows.map((t) => ({
         id: t.id,
         subject: t.subject,
@@ -155,123 +162,168 @@ export function buildPorts(): TickPorts {
     },
 
     getTotalSentToday: async () => {
-      const rows = await db
-        .select({ c: s.counters.sentCount })
-        .from(s.counters)
-        .where(eq(s.counters.day, today()));
-      return rows.reduce((a, r) => a + r.c, 0);
+      const col = await countersCol();
+      const rows = await col.find({ day: today() }).toArray();
+      return rows.reduce((a, r) => a + r.sentCount, 0);
     },
 
     lastDomainIndex: async () => -1,
 
     send: async (smtp, msg) => {
-      const r = await sendOne(makeTransport(smtp), msg);
-      return r.ok
-        ? { ok: true, response: r.response }
-        : { ok: false, kind: r.kind, error: r.error };
+      // sendOne already returns { ok, response } | { ok, kind, error } — the
+      // exact shape the engine expects, so pass it straight through.
+      return sendOne(makeTransport(smtp), msg);
     },
 
     recordSent: async (x) => {
-      // neon-http has no interactive transactions; db.batch() runs all
-      // statements in ONE server-side transaction (atomic). Counter upsert is
-      // last so a partial failure cannot over-count vs. recipient/log.
-      await db.batch([
-        db
-          .update(s.recipients)
-          .set({
-            status: 'sent',
-            sentAt: new Date(),
-            assignedDomainId: x.domainId,
+      // ATOMIC across 3 writes via a multi-document transaction. Atlas (a
+      // replica set, including M0) supports interactive transactions. The
+      // counter upsert runs LAST so a partial failure cannot over-count the
+      // cap relative to the recipient/send-log writes — and the whole thing
+      // either commits or aborts as a unit.
+      const client = await getMongoClient();
+      const session = client.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const [rCol, lCol, cCol] = await Promise.all([
+            recipientsCol(),
+            sendLogCol(),
+            countersCol(),
+          ]);
+
+          // 1. Mark the recipient as sent.
+          await rCol.updateOne(
+            { id: x.recipientId },
+            {
+              $set: {
+                status: 'sent',
+                sentAt: new Date(),
+                assignedDomainId: x.domainId,
+                templateId: x.templateId,
+              },
+            },
+            { session },
+          );
+
+          // 2. Append the success audit row.
+          const logRow: SendLogDoc = {
+            recipientId: x.recipientId,
+            domainId: x.domainId,
             templateId: x.templateId,
-          })
-          .where(eq(s.recipients.id, x.recipientId)),
-        db.insert(s.sendLog).values({
-          recipientId: x.recipientId,
-          domainId: x.domainId,
-          templateId: x.templateId,
-          smtpResponse: x.response ?? null,
-          status: 'sent',
-        }),
-        db.execute(counterUpsert(x.domainId, today())),
-      ]);
+            smtpResponse: x.response ?? null,
+            status: 'sent',
+            ts: new Date(),
+          };
+          await lCol.insertOne(logRow, { session });
+
+          // 3. Atomic counter upsert — LAST. `$inc` upsert is the single
+          // cap-critical write; the helper object is the same one tested.
+          const { filter, update } = counterUpsert(x.domainId, today());
+          await cCol.updateOne(filter, update, { upsert: true, session });
+        });
+      } finally {
+        await session.endSession();
+      }
     },
 
     recordFailure: async (x) => {
       if (x.kind === 'config') {
-        // Domain/cred problem, NOT the recipient: do NOT touch
-        // recipient.status/attempts (stays pending, no penalty). Audit only.
-        await db.insert(s.sendLog).values({
+        // SMTP DOMAIN/cred problem, NOT the recipient. Audit ONLY — do not
+        // touch recipient.status or recipient.attempts (it stays pending with
+        // no penalty so a healthy domain retries it). The domain pause is
+        // handled separately by `pauseDomain`. Single write, no transaction.
+        const lCol = await sendLogCol();
+        const logRow: SendLogDoc = {
           recipientId: x.recipientId,
           domainId: x.domainId,
+          templateId: null,
           smtpResponse: x.error ?? null,
           status: 'fail-config',
-        });
+          ts: new Date(),
+        };
+        await lCol.insertOne(logRow);
         return;
       }
 
-      if (x.kind === 'hard') {
-        await db.batch([
-          db
-            .update(s.recipients)
-            .set({
-              status: 'failed',
-              attempts: sql`${s.recipients.attempts} + 1`,
-              failReason: x.error ?? null,
-            })
-            .where(eq(s.recipients.id, x.recipientId)),
-          db.insert(s.sendLog).values({
+      const client = await getMongoClient();
+      const session = client.startSession();
+      try {
+        await session.withTransaction(async () => {
+          const [rCol, lCol] = await Promise.all([
+            recipientsCol(),
+            sendLogCol(),
+          ]);
+
+          if (x.kind === 'hard') {
+            // Permanent failure: mark failed + bump attempts.
+            await rCol.updateOne(
+              { id: x.recipientId },
+              {
+                $set: { status: 'failed', failReason: x.error ?? null },
+                $inc: { attempts: 1 },
+              },
+              { session },
+            );
+            const hardRow: SendLogDoc = {
+              recipientId: x.recipientId,
+              domainId: x.domainId,
+              templateId: null,
+              smtpResponse: x.error ?? null,
+              status: 'fail-hard',
+              ts: new Date(),
+            };
+            await lCol.insertOne(hardRow, { session });
+            return;
+          }
+
+          // soft (or undefined): single atomic pipeline update — increments
+          // attempts and flips status to 'failed' only once the NEW attempts
+          // value reaches 3, else keeps it 'pending' for retry.
+          await rCol.updateOne(
+            { id: x.recipientId },
+            softFailUpdatePipeline(x.error ?? null),
+            { session },
+          );
+          const softRow: SendLogDoc = {
             recipientId: x.recipientId,
             domainId: x.domainId,
+            templateId: null,
             smtpResponse: x.error ?? null,
-            status: 'fail-hard',
-          }),
-        ]);
-        return;
+            status: 'fail-soft',
+            ts: new Date(),
+          };
+          await lCol.insertOne(softRow, { session });
+        });
+      } finally {
+        await session.endSession();
       }
-
-      // soft: atomic single UPDATE — no prior SELECT needed.
-      // attempts increments by 1 and status flips to 'failed' once the NEW
-      // attempts value (pre-update column + 1) reaches 3.
-      await db.batch([
-        db
-          .update(s.recipients)
-          .set({
-            attempts: sql`${s.recipients.attempts} + 1`,
-            status: sql`case when ${s.recipients.attempts} + 1 >= 3 then 'failed' else 'pending' end`,
-            failReason: x.error ?? null,
-          })
-          .where(eq(s.recipients.id, x.recipientId)),
-        db.insert(s.sendLog).values({
-          recipientId: x.recipientId,
-          domainId: x.domainId,
-          smtpResponse: x.error ?? null,
-          status: 'fail-soft',
-        }),
-      ]);
     },
 
     suppress: async (email, reason) => {
-      await db
-        .insert(s.suppression)
-        .values({ email: email.toLowerCase(), reason })
-        .onConflictDoNothing();
+      // Idempotent: `$setOnInsert` only writes reason/ts when the doc is first
+      // created, so an existing suppression is never overwritten.
+      const col = await suppressionCol();
+      await col.updateOne(
+        { _id: email.toLowerCase() },
+        { $setOnInsert: { reason, ts: new Date() } },
+        { upsert: true },
+      );
     },
 
     pauseDomain: async (domainId, reason) => {
       // Idempotent: paused -> paused is fine. Audit row uses recipientId 0 as
       // a sentinel for a domain-level (non-recipient) event.
-      await db.batch([
-        db
-          .update(s.domains)
-          .set({ status: 'paused' })
-          .where(eq(s.domains.id, domainId)),
-        db.insert(s.sendLog).values({
-          recipientId: 0,
-          domainId,
-          smtpResponse: reason,
-          status: `paused:${reason}`,
-        }),
-      ]);
+      const [dCol, lCol] = await Promise.all([domainsCol(), sendLogCol()]);
+      await dCol.updateOne({ id: domainId }, { $set: { status: 'paused' } });
+      const auditRow: SendLogDoc = {
+        recipientId: 0,
+        domainId,
+        templateId: null,
+        smtpResponse: reason,
+        status: `paused:${reason}`,
+        ts: new Date(),
+      };
+      await lCol.insertOne(auditRow);
     },
 
     cfg: {
