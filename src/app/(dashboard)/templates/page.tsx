@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { templatesCol, nextId } from '@/db/collections';
 
@@ -23,81 +22,88 @@ export default async function TemplatesPage() {
   const templates = await (await templatesCol()).find({}).sort({ id: 1 }).toArray();
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '900px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.5rem' }}>Templates</h1>
-      <nav style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
-        <Link href="/">Campaigns</Link>
-        <Link href="/domains">Domains</Link>
-        <Link href="/templates">Templates</Link>
-        <Link href="/upload">Upload</Link>
-        <Link href="/log">Log</Link>
-        <Link href="/replies">Replies</Link>
-      </nav>
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Templates</h1>
+          <p className="page-sub">Email templates used for outbound campaigns.</p>
+        </div>
+      </div>
 
-      <h2>Existing Templates</h2>
-      {templates.length === 0 ? (
-        <p>No templates yet.</p>
-      ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '2rem' }}>
-          <thead>
-            <tr>
-              {['ID', 'Label', 'Subject', 'Weight', 'Active'].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.75rem', borderBottom: '2px solid #ccc' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {templates.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{t.id}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{t.label}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{t.subject}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{t.weight}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>
-                  <span style={{
-                    display: 'inline-block', padding: '0.1rem 0.4rem', borderRadius: '0.25rem',
-                    background: t.active ? '#d1fae5' : '#f3f4f6',
-                    color: t.active ? '#065f46' : '#6b7280',
-                  }}>{t.active ? 'Yes' : 'No'}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="stack">
+        {templates.length === 0 ? (
+          <div className="empty">
+            <p className="empty-title">No templates yet</p>
+            <p>Add a template below to get started.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Label</th>
+                  <th>Subject</th>
+                  <th className="num">Weight</th>
+                  <th>Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map(t => (
+                  <tr key={t.id}>
+                    <td className="num"><span className="cell-muted">{t.id}</span></td>
+                    <td><span className="cell-strong">{t.label}</span></td>
+                    <td><span className="cell-snippet">{t.subject}</span></td>
+                    <td className="num">{t.weight}</td>
+                    <td>
+                      <span className={t.active ? 'badge badge-success' : 'badge'}>
+                        {t.active ? 'active' : 'inactive'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      <h2>Add Template</h2>
-      <form action={addTemplate} style={{ display: 'grid', gap: '0.75rem', maxWidth: '600px' }}>
-        <label>
-          Label
-          <input type="text" name="label" required style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
-        </label>
-        <label>
-          Subject
-          <input type="text" name="subject" required style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
-        </label>
-        <label>
-          Body HTML
-          <textarea name="bodyHtml" rows={8} required
-            style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem', fontFamily: 'monospace', fontSize: '0.85rem' }} />
-        </label>
-        <label>
-          Body Text
-          <textarea name="bodyText" rows={5} required
-            style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem', fontFamily: 'monospace', fontSize: '0.85rem' }} />
-        </label>
-        <label>
-          Weight
-          <input type="number" name="weight" defaultValue={1} min={1}
-            style={{ display: 'block', width: '100%', padding: '0.3rem', marginTop: '0.2rem' }} />
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" name="active" defaultChecked /> Active
-        </label>
-        <button type="submit" style={{ padding: '0.4rem 1rem', cursor: 'pointer', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '0.25rem' }}>
-          Add Template
-        </button>
-      </form>
-    </main>
+        <div className="card">
+          <p className="section-title">Add Template</p>
+          <p className="section-sub">Create a new email template for your campaigns.</p>
+          <form action={addTemplate}>
+            <div className="form-grid">
+              <div className="field">
+                <label className="label" htmlFor="label">Label</label>
+                <input className="input" type="text" id="label" name="label" required />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="weight">Weight</label>
+                <input className="input" type="number" id="weight" name="weight" defaultValue={1} min={1} />
+              </div>
+              <div className="field field-wide">
+                <label className="label" htmlFor="subject">Subject</label>
+                <input className="input" type="text" id="subject" name="subject" required />
+              </div>
+              <div className="field field-wide">
+                <label className="label" htmlFor="bodyHtml">Body HTML</label>
+                <textarea className="textarea mono" id="bodyHtml" name="bodyHtml" rows={8} required />
+              </div>
+              <div className="field field-wide">
+                <label className="label" htmlFor="bodyText">Body Text</label>
+                <textarea className="textarea mono" id="bodyText" name="bodyText" rows={5} required />
+              </div>
+              <div className="field field-wide">
+                <label className="check-row">
+                  <input type="checkbox" name="active" defaultChecked /> Active
+                </label>
+              </div>
+            </div>
+            <div className="form-foot">
+              <button type="submit" className="btn btn-primary">Add Template</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
   );
 }

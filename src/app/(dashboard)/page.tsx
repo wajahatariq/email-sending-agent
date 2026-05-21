@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { campaignsCol } from '@/db/collections';
 import { SendNowButton } from './SendNowButton';
@@ -17,67 +16,82 @@ export default async function CampaignsPage() {
   const campaigns = await (await campaignsCol()).find({}).sort({ id: 1 }).toArray();
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '900px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.5rem' }}>Email Sending Agent — Campaigns</h1>
-      <nav style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
-        <Link href="/">Campaigns</Link>
-        <Link href="/domains">Domains</Link>
-        <Link href="/templates">Templates</Link>
-        <Link href="/upload">Upload</Link>
-        <Link href="/log">Log</Link>
-        <Link href="/replies">Replies</Link>
-      </nav>
-
-      <SendNowButton />
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Campaigns</h1>
+          <p className="page-sub">Start a campaign, then send batches.</p>
+        </div>
+        <div className="page-actions">
+          <SendNowButton />
+        </div>
+      </div>
 
       {campaigns.length === 0 ? (
-        <p>No campaigns yet. Use the <a href="/upload">Upload</a> page to create one.</p>
+        <div className="empty">
+          <p className="empty-title">No campaigns yet</p>
+          <p>Use the <a href="/upload">Upload</a> page to create one and import recipients.</p>
+        </div>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead>
-            <tr>
-              {['ID', 'Name', 'Status', 'Daily Cap', 'Created', 'Actions'].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '0.4rem 0.75rem', borderBottom: '2px solid #ccc' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map(c => (
-              <tr key={c.id} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{c.id}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{c.name}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>
-                  <span style={{
-                    display: 'inline-block', padding: '0.1rem 0.5rem', borderRadius: '0.25rem',
-                    background: c.status === 'active' ? '#d1fae5' : c.status === 'paused' ? '#fef3c7' : '#f3f4f6',
-                    color: c.status === 'active' ? '#065f46' : c.status === 'paused' ? '#92400e' : '#374151',
-                  }}>{c.status}</span>
-                </td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{c.globalDailyCap}</td>
-                <td style={{ padding: '0.4rem 0.75rem' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
-                <td style={{ padding: '0.4rem 0.75rem', display: 'flex', gap: '0.5rem' }}>
-                  <form action={setCampaignStatus}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <input type="hidden" name="status" value="active" />
-                    <button type="submit" disabled={c.status === 'active'}
-                      style={{ padding: '0.2rem 0.6rem', cursor: 'pointer', background: '#d1fae5', border: '1px solid #6ee7b7' }}>
-                      Start
-                    </button>
-                  </form>
-                  <form action={setCampaignStatus}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <input type="hidden" name="status" value="paused" />
-                    <button type="submit" disabled={c.status === 'paused'}
-                      style={{ padding: '0.2rem 0.6rem', cursor: 'pointer', background: '#fef3c7', border: '1px solid #fcd34d' }}>
-                      Stop
-                    </button>
-                  </form>
-                </td>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th className="num">Daily Cap</th>
+                <th>Created</th>
+                <th className="col-actions">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {campaigns.map(c => (
+                <tr key={c.id}>
+                  <td className="num"><span className="cell-muted">{c.id}</span></td>
+                  <td><span className="cell-strong">{c.name}</span></td>
+                  <td>
+                    <span className={
+                      c.status === 'active' ? 'badge badge-success' :
+                      c.status === 'paused' ? 'badge badge-warning' :
+                      'badge'
+                    }>
+                      {c.status}
+                    </span>
+                  </td>
+                  <td className="num">{c.globalDailyCap}</td>
+                  <td><span className="cell-muted">{new Date(c.createdAt).toLocaleDateString()}</span></td>
+                  <td className="col-actions">
+                    <form action={setCampaignStatus} style={{ display: 'inline' }}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="status" value="active" />
+                      <button
+                        type="submit"
+                        disabled={c.status === 'active'}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Start
+                      </button>
+                    </form>
+                    {' '}
+                    <form action={setCampaignStatus} style={{ display: 'inline' }}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="status" value="paused" />
+                      <button
+                        type="submit"
+                        disabled={c.status === 'paused'}
+                        className="btn btn-sm"
+                      >
+                        Stop
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </main>
+    </>
   );
 }

@@ -10,48 +10,31 @@ export function CheckRepliesButton() {
   );
 
   return (
-    <div
-      style={{
-        margin: '1rem 0 1.5rem',
-        padding: '1rem',
-        border: '1px solid #ddd',
-        borderRadius: '0.5rem',
-        background: '#fafafa',
-      }}
-    >
-      <form action={dispatch} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+    <div>
+      <form action={dispatch}>
         <button
           type="submit"
           disabled={pending}
-          style={{
-            padding: '0.55rem 1.1rem',
-            cursor: pending ? 'wait' : 'pointer',
-            background: pending ? '#9ca3af' : '#2563eb',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.3rem',
-            fontWeight: 600,
-            fontSize: '0.95rem',
-          }}
+          className="btn"
         >
           {pending ? 'Checking…' : 'Check Replies Now'}
         </button>
-        <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-          Connects to each IMAP-enabled account and ingests any new replies.
-        </span>
       </form>
+      <p className="hint" style={{ marginTop: '6px' }}>
+        Connects to each IMAP-enabled account and ingests any new replies.
+      </p>
 
       {result && (
-        <div style={{ marginTop: '0.75rem', fontSize: '0.9rem' }}>
-          <p style={{ margin: '0 0 0.4rem', color: '#065f46' }}>
-            Polled {result.domainsPolled} account(s) · {result.newReplies} new · {result.matched} matched
-          </p>
+        <div className="result" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+          <span className="result-ok">
+            Polled {result.domainsPolled} · {result.newReplies} new · {result.matched} matched
+          </span>
           {result.errors.length > 0 && (
             <details>
-              <summary style={{ cursor: 'pointer', color: '#92400e' }}>
+              <summary style={{ cursor: 'pointer' }}>
                 {result.errors.length} error(s) — click to expand
               </summary>
-              <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', fontSize: '0.85rem', color: '#7c3aed' }}>
+              <ul style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
                 {result.errors.map((e, i) => (
                   <li key={i}>{e.domainId}: {e.error}</li>
                 ))}

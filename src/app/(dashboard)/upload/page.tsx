@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { campaignsCol } from '@/db/collections';
 import UploadForm from './UploadForm';
 
@@ -9,18 +8,17 @@ export default async function UploadPage() {
   const campaigns = allCampaigns.map(c => ({ id: c.id, name: c.name, status: c.status }));
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.5rem' }}>Upload Recipients</h1>
-      <nav style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
-        <Link href="/">Campaigns</Link>
-        <Link href="/domains">Domains</Link>
-        <Link href="/templates">Templates</Link>
-        <Link href="/upload">Upload</Link>
-        <Link href="/log">Log</Link>
-        <Link href="/replies">Replies</Link>
-      </nav>
+    <>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Upload Recipients</h1>
+          <p className="page-sub">Import a CSV list of recipients into a campaign.</p>
+        </div>
+      </div>
 
-      <UploadForm campaigns={campaigns} />
-    </main>
+      <div className="card">
+        <UploadForm campaigns={campaigns} />
+      </div>
+    </>
   );
 }
