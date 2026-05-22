@@ -17,29 +17,34 @@ async function addDomain(formData: FormData) {
   const today = new Date().toISOString().slice(0, 10);
   const id = await nextId('domains');
 
-  const imapHost = ((formData.get('imapHost') as string | null) ?? '').trim();
-  const imapUser = ((formData.get('imapUser') as string | null) ?? '').trim();
+  const fromEmail = formData.get('fromEmail') as string;
+  // SMTP/IMAP user defaults to the From Email — for Hostinger and most hosts
+  // the SMTP login IS the mailbox address. User can override if their host differs.
+  const smtpUserInput = ((formData.get('smtpUser') as string | null) ?? '').trim();
+  const smtpUser = smtpUserInput || fromEmail;
+
+  const imapHost = (((formData.get('imapHost') as string | null) ?? '').trim()) || 'imap.hostinger.com';
+  const imapUserInput = ((formData.get('imapUser') as string | null) ?? '').trim();
   const imapPass = (formData.get('imapPass') as string | null) ?? '';
-  // IMAP is configured only when host, user, AND password are all provided.
-  // Partial input is ignored rather than throwing (encryptSecret rejects '').
-  const imapFields =
-    imapHost && imapUser && imapPass
-      ? {
-          imapHost,
-          imapPort: Number(formData.get('imapPort') ?? 993),
-          imapUser,
-          imapPassEnc: encryptSecret(imapPass, encKey),
-        }
-      : {};
+  // IMAP is configured when an IMAP password is provided. Host/user fall back
+  // to Hostinger / fromEmail defaults so the operator only needs to type the password.
+  const imapFields = imapPass
+    ? {
+        imapHost,
+        imapPort: Number(formData.get('imapPort') ?? 993),
+        imapUser: imapUserInput || fromEmail,
+        imapPassEnc: encryptSecret(imapPass, encKey),
+      }
+    : {};
 
   await (await domainsCol()).insertOne({
     id,
     brandId,
     fromName: formData.get('fromName') as string,
-    fromEmail: formData.get('fromEmail') as string,
-    smtpHost: formData.get('smtpHost') as string,
+    fromEmail,
+    smtpHost: (formData.get('smtpHost') as string) || 'smtp.hostinger.com',
     smtpPort: Number(formData.get('smtpPort')),
-    smtpUser: formData.get('smtpUser') as string,
+    smtpUser,
     smtpPassEnc,
     dailyCap: Number(formData.get('dailyCap') ?? 40),
     warmupStartDate: (formData.get('warmupStartDate') as string) || today,
@@ -184,15 +189,15 @@ export default async function DomainsPage() {
               </div>
               <div className="field">
                 <label className="label" htmlFor="smtpHost">SMTP Host</label>
-                <input className="input" type="text" id="smtpHost" name="smtpHost" required />
+                <input className="input" type="text" id="smtpHost" name="smtpHost" required defaultValue="smtp.hostinger.com" />
               </div>
               <div className="field">
                 <label className="label" htmlFor="smtpPort">SMTP Port</label>
-                <input className="input" type="number" id="smtpPort" name="smtpPort" required defaultValue={587} />
+                <input className="input" type="number" id="smtpPort" name="smtpPort" required defaultValue={465} />
               </div>
               <div className="field">
-                <label className="label" htmlFor="smtpUser">SMTP User</label>
-                <input className="input" type="text" id="smtpUser" name="smtpUser" required />
+                <label className="label" htmlFor="smtpUser">SMTP User <span className="hint">(leave blank to use From Email)</span></label>
+                <input className="input" type="text" id="smtpUser" name="smtpUser" placeholder="defaults to From Email" />
               </div>
               <div className="field">
                 <label className="label" htmlFor="smtpPass">SMTP Password</label>
@@ -231,15 +236,15 @@ export default async function DomainsPage() {
                   <div className="form-grid">
                     <div className="field">
                       <label className="label" htmlFor="imapHost">IMAP Host</label>
-                      <input className="input" type="text" id="imapHost" name="imapHost" placeholder="imap.hostinger.com" />
+                      <input className="input" type="text" id="imapHost" name="imapHost" defaultValue="imap.hostinger.com" />
                     </div>
                     <div className="field">
                       <label className="label" htmlFor="imapPort">IMAP Port</label>
                       <input className="input" type="number" id="imapPort" name="imapPort" placeholder="993" defaultValue={993} />
                     </div>
                     <div className="field">
-                      <label className="label" htmlFor="imapUser">IMAP User</label>
-                      <input className="input" type="text" id="imapUser" name="imapUser" placeholder="usually the full email address" />
+                      <label className="label" htmlFor="imapUser">IMAP User <span className="hint">(leave blank to use From Email)</span></label>
+                      <input className="input" type="text" id="imapUser" name="imapUser" placeholder="defaults to From Email" />
                     </div>
                     <div className="field">
                       <label className="label" htmlFor="imapPass">IMAP Password</label>
