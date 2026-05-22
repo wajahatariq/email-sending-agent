@@ -2,7 +2,7 @@
 
 ## Theme
 
-Light, warm. Scene: an agency owner at a desk in daytime office light, scanning campaign status and prospect replies on a wide monitor. This is daytime business operations, not a 2am monitoring console, so the surface is paper-warm light, never dark. Calm, dense, trustworthy.
+Light, warm. Scene: an operator at a desk in daytime office light, scanning campaign status and prospect replies on a wide monitor. This is daytime business operations, not a 2am monitoring console, so the surface is paper-warm light, never dark. Calm, dense, trustworthy. The theme is brand-neutral by design: the tool is white-label, so no brand hue is baked in.
 
 ## Color
 

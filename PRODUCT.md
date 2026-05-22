@@ -6,11 +6,11 @@ product
 
 ## Users
 
-A single operator: the owner of Austro Web n Logo, a web-design and logo agency. They run cold B2B outreach to win design clients. Context of use is daytime desk work on a wide monitor: open the dashboard, check which campaigns are sending, fire a batch, read prospect replies, move on. They run the business; they are not a deliverability engineer. The interface must let them trust the numbers without studying them.
+A single operator running cold B2B outreach for a brand. The brand is not fixed: this is a white-label tool configured per deployment via the `COMPANY_NAME` / `COMPANY_ADDRESS` env vars. The operator may be a solo founder, an agency running it for a client, or a sales lead. Context of use is daytime desk work on a wide monitor: open the dashboard, check which campaigns are sending, fire a batch, read prospect replies, move on. They run the business, not the mail servers; they are not a deliverability engineer. The interface must let them trust the numbers without studying them.
 
 ## Product Purpose
 
-A deliverability-safe cold-outreach engine with a reply inbox. It protects sending-domain reputation through daily caps, warmup ramps, domain rotation, and suppression, sends paced batches on demand, and ingests replies from each sending account so the operator sees responses in one place. Success is: domains stay un-blacklisted, batches go out without thinking about it, and no reply is missed.
+A brand-agnostic, deliverability-safe cold-outreach engine with a reply inbox. It protects sending-domain reputation through daily caps, warmup ramps, domain rotation, and suppression, sends paced batches on demand, and ingests replies from each sending account so the operator sees responses in one place. The sending identity (company name, postal address) is configuration, never hardcoded. Success is: domains stay un-blacklisted, batches go out without thinking about it, and no reply is missed.
 
 ## Brand Personality
 
