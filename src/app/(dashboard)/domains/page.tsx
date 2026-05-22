@@ -66,6 +66,15 @@ async function toggleDomainStatus(formData: FormData) {
   revalidatePath('/domains');
 }
 
+async function updateDomainCap(formData: FormData) {
+  'use server';
+  const id = Number(formData.get('id'));
+  const cap = Math.max(1, Math.min(1000, Number(formData.get('dailyCap'))));
+  if (!Number.isFinite(cap)) return;
+  await (await domainsCol()).updateOne({ id }, { $set: { dailyCap: cap } });
+  revalidatePath('/domains');
+}
+
 export default async function DomainsPage() {
   const brandId = await getSelectedBrandId();
 
@@ -135,7 +144,22 @@ export default async function DomainsPage() {
                         {d.status}
                       </span>
                     </td>
-                    <td className="num">{d.dailyCap}</td>
+                    <td className="num">
+                      <form action={updateDomainCap} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                        <input type="hidden" name="id" value={d.id} />
+                        <input
+                          className="input"
+                          type="number"
+                          name="dailyCap"
+                          defaultValue={d.dailyCap}
+                          min={1}
+                          max={1000}
+                          style={{ width: 72, padding: '4px 6px' }}
+                          aria-label="Daily cap"
+                        />
+                        <button type="submit" className="btn btn-sm">Save</button>
+                      </form>
+                    </td>
                     <td><span className="cell-muted">{d.warmupStartDate}</span></td>
                     <td>
                       <span className={d.spfVerified ? 'badge badge-success badge-plain' : 'badge badge-plain'}>
