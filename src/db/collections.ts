@@ -8,7 +8,8 @@ import { getDb } from './client';
 export interface BrandDoc {
   _id?: ObjectId;
   id: number;
-  name: string;
+  name: string; // company name shown in the CAN-SPAM footer of this brand's emails
+  companyAddress: string; // physical postal address for this brand's footer (CAN-SPAM)
   createdAt: Date;
 }
 

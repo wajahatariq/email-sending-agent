@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { campaignsCol } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 import { SendNowButton } from './SendNowButton';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +15,27 @@ async function setCampaignStatus(formData: FormData) {
 }
 
 export default async function CampaignsPage() {
-  const campaigns = await (await campaignsCol()).find({}).sort({ id: 1 }).toArray();
+  const brandId = await getSelectedBrandId();
+
+  if (brandId === null) {
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Campaigns</h1>
+            <p className="page-sub">Start a campaign, then send batches.</p>
+          </div>
+        </div>
+        <div className="empty">
+          <p className="empty-title">No brand selected</p>
+          <p>Create a brand first.</p>
+          <Link href="/brands" className="btn btn-primary">Add a brand</Link>
+        </div>
+      </>
+    );
+  }
+
+  const campaigns = await (await campaignsCol()).find({ brandId }).sort({ id: 1 }).toArray();
 
   return (
     <>

@@ -1,12 +1,34 @@
+import Link from 'next/link';
 import { sendLogCol, countersCol } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LogPage() {
+  const brandId = await getSelectedBrandId();
+
+  if (brandId === null) {
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Send Log</h1>
+            <p className="page-sub">Last 200 send events and today&apos;s per-domain counters.</p>
+          </div>
+        </div>
+        <div className="empty">
+          <p className="empty-title">No brand selected</p>
+          <p>Create a brand first.</p>
+          <Link href="/brands" className="btn btn-primary">Add a brand</Link>
+        </div>
+      </>
+    );
+  }
+
   const today = new Date().toISOString().slice(0, 10);
 
-  const logs = await (await sendLogCol()).find({}).sort({ ts: -1 }).limit(200).toArray();
-  const counters = await (await countersCol()).find({ day: today }).toArray();
+  const logs = await (await sendLogCol()).find({ brandId }).sort({ ts: -1 }).limit(200).toArray();
+  const counters = await (await countersCol()).find({ brandId, day: today }).toArray();
 
   return (
     <>

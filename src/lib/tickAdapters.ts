@@ -1,5 +1,6 @@
 import { getMongoClient } from '../db/client';
 import {
+  brandsCol,
   campaignsCol,
   countersCol,
   domainsCol,
@@ -72,8 +73,11 @@ export function softFailUpdatePipeline(error: string | null): object[] {
   ];
 }
 
-export function buildPorts(brandId: number): TickPorts {
+export async function buildPorts(brandId: number): Promise<TickPorts> {
   const encKey = process.env.SMTP_ENC_KEY!;
+  // The CAN-SPAM footer identity (company name + postal address) is per-brand,
+  // read from the brand document — never a global env var in multi-tenant mode.
+  const brand = await (await brandsCol()).findOne({ id: brandId });
 
   return {
     now: () => new Date(),
@@ -338,8 +342,8 @@ export function buildPorts(brandId: number): TickPorts {
     },
 
     cfg: {
-      companyName: process.env.COMPANY_NAME ?? 'Company',
-      companyAddress: process.env.COMPANY_ADDRESS ?? '',
+      companyName: brand?.name ?? 'Company',
+      companyAddress: brand?.companyAddress ?? '',
       baseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3000',
     },
   };

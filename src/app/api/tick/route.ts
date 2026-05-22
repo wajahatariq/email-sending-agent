@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const results: Array<{ brandId: number; sent: number; failed: number; skipped?: string }> = [];
   for (const brand of brands) {
-    const tickResult = await runTick(buildPorts(brand.id));
+    const tickResult = await runTick(await buildPorts(brand.id));
     results.push({ brandId: brand.id, ...tickResult });
   }
 

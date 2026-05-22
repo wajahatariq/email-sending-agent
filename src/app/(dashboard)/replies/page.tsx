@@ -1,11 +1,33 @@
+import Link from 'next/link';
 import { repliesCol, recipientsCol, domainsCol, campaignsCol } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 import { CheckRepliesButton } from './CheckRepliesButton';
 
 export const dynamic = 'force-dynamic';
 
 export default async function RepliesPage() {
+  const brandId = await getSelectedBrandId();
+
+  if (brandId === null) {
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Replies</h1>
+            <p className="page-sub">Inbound replies matched against campaign recipients.</p>
+          </div>
+        </div>
+        <div className="empty">
+          <p className="empty-title">No brand selected</p>
+          <p>Create a brand first.</p>
+          <Link href="/brands" className="btn btn-primary">Add a brand</Link>
+        </div>
+      </>
+    );
+  }
+
   const replies = await (await repliesCol())
-    .find({})
+    .find({ brandId })
     .sort({ receivedAt: -1 })
     .limit(200)
     .toArray();

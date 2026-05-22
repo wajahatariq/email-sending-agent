@@ -1,11 +1,15 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { domainsCol, nextId } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 import { encryptSecret } from '@/lib/crypto';
 
 export const dynamic = 'force-dynamic';
 
 async function addDomain(formData: FormData) {
   'use server';
+  const brandId = await getSelectedBrandId();
+  if (brandId === null) throw new Error('no brand selected');
   const encKey = process.env.SMTP_ENC_KEY;
   if (!encKey) throw new Error('SMTP_ENC_KEY not set');
   const smtpPass = formData.get('smtpPass') as string;
@@ -30,6 +34,7 @@ async function addDomain(formData: FormData) {
 
   await (await domainsCol()).insertOne({
     id,
+    brandId,
     fromName: formData.get('fromName') as string,
     fromEmail: formData.get('fromEmail') as string,
     smtpHost: formData.get('smtpHost') as string,
@@ -57,7 +62,27 @@ async function toggleDomainStatus(formData: FormData) {
 }
 
 export default async function DomainsPage() {
-  const domains = await (await domainsCol()).find({}).sort({ id: 1 }).toArray();
+  const brandId = await getSelectedBrandId();
+
+  if (brandId === null) {
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Domains</h1>
+            <p className="page-sub">Manage sending domains, SMTP credentials, and IMAP reply ingestion.</p>
+          </div>
+        </div>
+        <div className="empty">
+          <p className="empty-title">No brand selected</p>
+          <p>Create a brand first.</p>
+          <Link href="/brands" className="btn btn-primary">Add a brand</Link>
+        </div>
+      </>
+    );
+  }
+
+  const domains = await (await domainsCol()).find({ brandId }).sort({ id: 1 }).toArray();
   const today = new Date().toISOString().slice(0, 10);
 
   return (

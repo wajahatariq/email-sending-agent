@@ -1,6 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { campaignsCol, recipientsCol, nextId, nextIdBlock } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 import { parseRecipientsCsv } from '@/lib/csv';
 import { makeUnsubToken } from '@/lib/token';
 
@@ -13,9 +14,14 @@ export async function importCsv(_prev: ImportResult | null, formData: FormData):
   const { valid, errors } = parseRecipientsCsv(csv);
   let campaignId: number;
   if (newCampaignName) {
+    const brandId = await getSelectedBrandId();
+    if (brandId === null) {
+      return { imported: 0, errors: ['No brand selected. Select a brand before importing.', ...errors] };
+    }
     campaignId = await nextId('campaigns');
     await (await campaignsCol()).insertOne({
       id: campaignId,
+      brandId,
       name: newCampaignName,
       status: 'draft',
       bhStart: 9,

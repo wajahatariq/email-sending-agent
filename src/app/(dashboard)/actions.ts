@@ -15,7 +15,7 @@ export async function sendNow(
 ): Promise<TickResult> {
   const brandId = await getSelectedBrandId();
   if (brandId === null) return { sent: 0, failed: 0, skipped: 'no-brand-selected' };
-  const result = await runTick(buildPorts(brandId), { manual: true });
+  const result = await runTick(await buildPorts(brandId), { manual: true });
   revalidatePath('/');
   revalidatePath('/log');
   return result;

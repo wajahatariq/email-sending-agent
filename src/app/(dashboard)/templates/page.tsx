@@ -1,13 +1,18 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { templatesCol, nextId } from '@/db/collections';
+import { getSelectedBrandId } from '@/lib/brand';
 
 export const dynamic = 'force-dynamic';
 
 async function addTemplate(formData: FormData) {
   'use server';
+  const brandId = await getSelectedBrandId();
+  if (brandId === null) throw new Error('no brand selected');
   const id = await nextId('templates');
   await (await templatesCol()).insertOne({
     id,
+    brandId,
     label: formData.get('label') as string,
     subject: formData.get('subject') as string,
     bodyHtml: formData.get('bodyHtml') as string,
@@ -19,7 +24,27 @@ async function addTemplate(formData: FormData) {
 }
 
 export default async function TemplatesPage() {
-  const templates = await (await templatesCol()).find({}).sort({ id: 1 }).toArray();
+  const brandId = await getSelectedBrandId();
+
+  if (brandId === null) {
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Templates</h1>
+            <p className="page-sub">Email templates used for outbound campaigns.</p>
+          </div>
+        </div>
+        <div className="empty">
+          <p className="empty-title">No brand selected</p>
+          <p>Create a brand first.</p>
+          <Link href="/brands" className="btn btn-primary">Add a brand</Link>
+        </div>
+      </>
+    );
+  }
+
+  const templates = await (await templatesCol()).find({ brandId }).sort({ id: 1 }).toArray();
 
   return (
     <>
