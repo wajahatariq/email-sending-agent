@@ -1,11 +1,22 @@
 'use client';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { importCsv, ImportResult } from './actions';
 
 interface Campaign { id: number; name: string; status: string; }
 
 export default function UploadForm({ campaigns }: { campaigns: Campaign[] }) {
   const [result, action, pending] = useActionState<ImportResult | null, FormData>(importCsv, null);
+  const [csv, setCsv] = useState('');
+  const [fileName, setFileName] = useState('');
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFileName(f.name);
+    const reader = new FileReader();
+    reader.onload = () => setCsv(String(reader.result ?? ''));
+    reader.readAsText(f);
+  }
 
   return (
     <div>
@@ -47,13 +58,26 @@ export default function UploadForm({ campaigns }: { campaigns: Campaign[] }) {
             />
           </div>
           <div className="field field-wide">
-            <label className="label" htmlFor="csv">CSV Data</label>
+            <label className="label" htmlFor="csvFile">Upload CSV file</label>
+            <input
+              className="input"
+              type="file"
+              id="csvFile"
+              accept=".csv,text/csv,text/plain"
+              onChange={onFile}
+            />
+            {fileName && <p className="hint">Loaded <code>{fileName}</code> — review below before importing.</p>}
+          </div>
+          <div className="field field-wide">
+            <label className="label" htmlFor="csv">CSV Data <span className="hint">(or paste directly)</span></label>
             <textarea
               className="textarea mono"
               id="csv"
               name="csv"
               rows={12}
               required
+              value={csv}
+              onChange={e => setCsv(e.target.value)}
               placeholder={'email,name,company\njohn@example.com,John Doe,Acme Corp'}
             />
             <p className="hint">First row must be a header. Required column: <code>email</code>. Optional: <code>name</code>, <code>company</code>, and any extra columns stored as custom fields.</p>
