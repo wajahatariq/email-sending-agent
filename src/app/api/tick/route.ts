@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { listBrands } from '../../../lib/brand';
 import { runTick } from '../../../lib/tick';
 import { buildPorts } from '../../../lib/tickAdapters';
 
@@ -25,6 +26,17 @@ export async function GET(req: NextRequest) {
   if (!authorized(req.headers.get('authorization'))) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  const result = await runTick(buildPorts());
-  return NextResponse.json(result);
+
+  const brands = await listBrands();
+  if (brands.length === 0) {
+    return NextResponse.json({ brands: 0, results: [] });
+  }
+
+  const results: Array<{ brandId: number; sent: number; failed: number; skipped?: string }> = [];
+  for (const brand of brands) {
+    const tickResult = await runTick(buildPorts(brand.id));
+    results.push({ brandId: brand.id, ...tickResult });
+  }
+
+  return NextResponse.json({ brands: brands.length, results });
 }

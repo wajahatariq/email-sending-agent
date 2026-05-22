@@ -1,5 +1,6 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+import { getSelectedBrandId } from '@/lib/brand';
 import { runTick, type TickResult } from '@/lib/tick';
 import { buildPorts } from '@/lib/tickAdapters';
 
@@ -12,7 +13,9 @@ export async function sendNow(
   _prev: TickResult | null,
   _formData: FormData,
 ): Promise<TickResult> {
-  const result = await runTick(buildPorts(), { manual: true });
+  const brandId = await getSelectedBrandId();
+  if (brandId === null) return { sent: 0, failed: 0, skipped: 'no-brand-selected' };
+  const result = await runTick(buildPorts(brandId), { manual: true });
   revalidatePath('/');
   revalidatePath('/log');
   return result;

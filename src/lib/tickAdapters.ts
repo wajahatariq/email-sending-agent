@@ -27,16 +27,21 @@ const today = (): string => new Date().toISOString().slice(0, 10);
  * `_id` is `${domainId}:${day}` — unique per domain per UTC day. `$inc` creates
  * the field at 0 then adds 1 on insert; `$setOnInsert` stamps the immutable
  * coordinates only when the doc is first created.
+ *
+ * `brandId` is stamped on insert so the counter belongs to the brand that owns
+ * the domain. The `_id` key stays `${domainId}:${day}` — a domain belongs to
+ * exactly one brand so the key remains globally unique.
  */
 export function counterUpsert(
   domainId: number,
   day: string,
+  brandId: number,
 ): { filter: { _id: string }; update: object } {
   return {
     filter: { _id: `${domainId}:${day}` },
     update: {
       $inc: { sentCount: 1 },
-      $setOnInsert: { domainId, day },
+      $setOnInsert: { domainId, day, brandId },
     },
   };
 }
@@ -67,7 +72,7 @@ export function softFailUpdatePipeline(error: string | null): object[] {
   ];
 }
 
-export function buildPorts(): TickPorts {
+export function buildPorts(brandId: number): TickPorts {
   const encKey = process.env.SMTP_ENC_KEY!;
 
   return {
@@ -76,7 +81,7 @@ export function buildPorts(): TickPorts {
 
     getActiveCampaign: async () => {
       const col = await campaignsCol();
-      const c = await col.findOne({ status: 'active' });
+      const c = await col.findOne({ status: 'active', brandId });
       return c
         ? {
             id: c.id,
@@ -98,6 +103,7 @@ export function buildPorts(): TickPorts {
           spfVerified: true,
           dkimVerified: true,
           dmarcVerified: true,
+          brandId,
         })
         .toArray();
       const day = today();
@@ -132,7 +138,7 @@ export function buildPorts(): TickPorts {
 
     getPendingRecipients: async (limit) => {
       const campCol = await campaignsCol();
-      const camp = await campCol.findOne({ status: 'active' });
+      const camp = await campCol.findOne({ status: 'active', brandId });
       if (!camp) return [];
       const rCol = await recipientsCol();
       const rows = await rCol
@@ -151,7 +157,7 @@ export function buildPorts(): TickPorts {
 
     getActiveTemplates: async () => {
       const col = await templatesCol();
-      const rows = await col.find({ active: true }).toArray();
+      const rows = await col.find({ active: true, brandId }).toArray();
       return rows.map((t) => ({
         id: t.id,
         subject: t.subject,
@@ -163,7 +169,7 @@ export function buildPorts(): TickPorts {
 
     getTotalSentToday: async () => {
       const col = await countersCol();
-      const rows = await col.find({ day: today() }).toArray();
+      const rows = await col.find({ day: today(), brandId }).toArray();
       return rows.reduce((a, r) => a + r.sentCount, 0);
     },
 
@@ -205,8 +211,9 @@ export function buildPorts(): TickPorts {
             { session },
           );
 
-          // 2. Append the success audit row.
+          // 2. Append the success audit row (stamped with brandId).
           const logRow: SendLogDoc = {
+            brandId,
             recipientId: x.recipientId,
             domainId: x.domainId,
             templateId: x.templateId,
@@ -218,7 +225,7 @@ export function buildPorts(): TickPorts {
 
           // 3. Atomic counter upsert — LAST. `$inc` upsert is the single
           // cap-critical write; the helper object is the same one tested.
-          const { filter, update } = counterUpsert(x.domainId, today());
+          const { filter, update } = counterUpsert(x.domainId, today(), brandId);
           await cCol.updateOne(filter, update, { upsert: true, session });
         });
       } finally {
@@ -234,6 +241,7 @@ export function buildPorts(): TickPorts {
         // handled separately by `pauseDomain`. Single write, no transaction.
         const lCol = await sendLogCol();
         const logRow: SendLogDoc = {
+          brandId,
           recipientId: x.recipientId,
           domainId: x.domainId,
           templateId: null,
@@ -265,6 +273,7 @@ export function buildPorts(): TickPorts {
               { session },
             );
             const hardRow: SendLogDoc = {
+              brandId,
               recipientId: x.recipientId,
               domainId: x.domainId,
               templateId: null,
@@ -285,6 +294,7 @@ export function buildPorts(): TickPorts {
             { session },
           );
           const softRow: SendLogDoc = {
+            brandId,
             recipientId: x.recipientId,
             domainId: x.domainId,
             templateId: null,
@@ -316,6 +326,7 @@ export function buildPorts(): TickPorts {
       const [dCol, lCol] = await Promise.all([domainsCol(), sendLogCol()]);
       await dCol.updateOne({ id: domainId }, { $set: { status: 'paused' } });
       const auditRow: SendLogDoc = {
+        brandId,
         recipientId: 0,
         domainId,
         templateId: null,

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { listBrands } from '../../../lib/brand';
 import { buildPollPorts } from '../../../lib/pollAdapters';
 import { pollReplies } from '../../../lib/pollReplies';
 
@@ -26,8 +27,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   try {
-    const result = await pollReplies(buildPollPorts());
-    return NextResponse.json(result);
+    const brands = await listBrands();
+    if (brands.length === 0) {
+      return NextResponse.json({ brands: 0, results: [] });
+    }
+
+    const results: Array<{
+      brandId: number;
+      domainsPolled: number;
+      newReplies: number;
+      matched: number;
+      errors: Array<{ domainId: number; error: string }>;
+    }> = [];
+    for (const brand of brands) {
+      const pollResult = await pollReplies(buildPollPorts(brand.id));
+      results.push({ brandId: brand.id, ...pollResult });
+    }
+
+    return NextResponse.json({ brands: brands.length, results });
   } catch (err) {
     console.error('[poll-replies]', err);
     return NextResponse.json({ error: 'poll failed' }, { status: 500 });
