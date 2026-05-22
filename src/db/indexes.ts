@@ -7,17 +7,27 @@ import { getDb } from './client';
 export async function ensureIndexes(): Promise<void> {
   const db = await getDb();
 
+  // brands: unique integer-id index
+  await db.collection('brands').createIndex({ id: 1 }, { unique: true });
+
   // Unique integer-id indexes for entity collections
   await db.collection('domains').createIndex({ id: 1 }, { unique: true });
   await db.collection('templates').createIndex({ id: 1 }, { unique: true });
   await db.collection('campaigns').createIndex({ id: 1 }, { unique: true });
   await db.collection('recipients').createIndex({ id: 1 }, { unique: true });
 
+  // Brand-scoped query indexes
+  await db.collection('domains').createIndex({ brandId: 1 });
+  await db.collection('templates').createIndex({ brandId: 1 });
+  await db.collection('campaigns').createIndex({ brandId: 1 });
+
   // Query-pattern indexes
   await db.collection('recipients').createIndex({ campaignId: 1, status: 1 });
   await db.collection('recipients').createIndex({ email: 1 });
   await db.collection('send_log').createIndex({ ts: -1 });
+  await db.collection('send_log').createIndex({ brandId: 1, ts: -1 });
   await db.collection('counters').createIndex({ domainId: 1, day: 1 });
+  await db.collection('counters').createIndex({ brandId: 1, day: 1 });
 
   // replies: dedup by (domainId, imapUid); list newest-first
   await db.collection('replies').createIndex(
@@ -25,6 +35,7 @@ export async function ensureIndexes(): Promise<void> {
     { unique: true },
   );
   await db.collection('replies').createIndex({ receivedAt: -1 });
+  await db.collection('replies').createIndex({ brandId: 1, receivedAt: -1 });
 
   // suppression: keyed by _id (email) — no extra index needed
   // counters: also keyed by _id — compound index above covers query pattern

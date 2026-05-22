@@ -5,9 +5,17 @@ import { getDb } from './client';
 // Document interfaces
 // ---------------------------------------------------------------------------
 
+export interface BrandDoc {
+  _id?: ObjectId;
+  id: number;
+  name: string;
+  createdAt: Date;
+}
+
 export interface DomainDoc {
   _id?: ObjectId;
   id: number;
+  brandId: number;
   fromName: string;
   fromEmail: string;
   smtpHost: string;
@@ -33,6 +41,7 @@ export interface DomainDoc {
 export interface TemplateDoc {
   _id?: ObjectId;
   id: number;
+  brandId: number;
   label: string;
   subject: string;
   bodyHtml: string;
@@ -44,6 +53,7 @@ export interface TemplateDoc {
 export interface CampaignDoc {
   _id?: ObjectId;
   id: number;
+  brandId: number;
   name: string;
   status: string;
   bhStart: number;
@@ -77,6 +87,7 @@ export interface RecipientDoc {
 
 export interface ReplyDoc {
   _id?: ObjectId;
+  brandId: number;
   domainId: number; // sending account whose inbox received this reply
   recipientId: number | null; // matched campaign recipient, or null if unmatched
   fromEmail: string;
@@ -92,6 +103,7 @@ export interface ReplyDoc {
 
 export interface SendLogDoc {
   // Uses ObjectId _id — no integer id
+  brandId: number;
   recipientId: number;
   domainId: number;
   templateId: number | null;
@@ -108,6 +120,7 @@ export interface SuppressionDoc {
 
 export interface CounterDoc {
   _id: string; // `${domainId}:${day}`
+  brandId: number;
   domainId: number;
   day: string; // 'YYYY-MM-DD'
   sentCount: number;
@@ -116,6 +129,10 @@ export interface CounterDoc {
 // ---------------------------------------------------------------------------
 // Typed collection accessors
 // ---------------------------------------------------------------------------
+
+export async function brandsCol(): Promise<Collection<BrandDoc>> {
+  return (await getDb()).collection<BrandDoc>('brands');
+}
 
 export async function domainsCol(): Promise<Collection<DomainDoc>> {
   return (await getDb()).collection<DomainDoc>('domains');
