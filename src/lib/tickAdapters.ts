@@ -100,16 +100,23 @@ export async function buildPorts(brandId: number): Promise<TickPorts> {
     },
 
     getEligibleDomains: async () => {
+      // Scope to the active campaign's assigned domains when set. Empty/missing
+      // domainIds = all brand domains (back-compat with campaigns created
+      // before per-campaign domain assignment).
+      const campCol = await campaignsCol();
+      const camp = await campCol.findOne({ status: 'active', brandId });
       const [dCol, cCol] = await Promise.all([domainsCol(), countersCol()]);
-      const ds = await dCol
-        .find({
-          status: 'active',
-          spfVerified: true,
-          dkimVerified: true,
-          dmarcVerified: true,
-          brandId,
-        })
-        .toArray();
+      const filter: Record<string, unknown> = {
+        status: 'active',
+        spfVerified: true,
+        dkimVerified: true,
+        dmarcVerified: true,
+        brandId,
+      };
+      if (camp?.domainIds && camp.domainIds.length > 0) {
+        filter.id = { $in: camp.domainIds };
+      }
+      const ds = await dCol.find(filter).toArray();
       const day = today();
       const out: Awaited<ReturnType<TickPorts['getEligibleDomains']>> = [];
       for (const d of ds) {

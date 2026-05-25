@@ -64,6 +64,7 @@ export interface CampaignDoc {
   perInboxCap: number;
   jitterPct: number;
   templateIds?: number[];
+  domainIds?: number[];
   createdAt: Date;
 }
 

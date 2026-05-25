@@ -6,6 +6,7 @@ import {
   recipientsCol,
   templatesCol,
   sendLogCol,
+  domainsCol,
 } from '@/db/collections';
 import { getSelectedBrandId } from '@/lib/brand';
 
@@ -60,6 +61,18 @@ async function updateCampaignTemplates(formData: FormData) {
   revalidatePath('/');
 }
 
+async function updateCampaignDomains(formData: FormData) {
+  'use server';
+  const brandId = await getSelectedBrandId();
+  if (brandId === null) throw new Error('no brand selected');
+  const id = Number(formData.get('id'));
+  if (!Number.isFinite(id)) return;
+  const ids = formData.getAll('domainIds').map((v) => Number(v)).filter((n) => Number.isFinite(n));
+  await (await campaignsCol()).updateOne({ id, brandId }, { $set: { domainIds: ids } });
+  revalidatePath(`/campaigns/${id}`);
+  revalidatePath('/');
+}
+
 async function deleteCampaign(formData: FormData) {
   'use server';
   const brandId = await getSelectedBrandId();
@@ -101,8 +114,9 @@ export default async function CampaignDetailPage({
   const c = await (await campaignsCol()).findOne({ id, brandId });
   if (!c) notFound();
 
-  const [templates, recipientCounts, recentLog] = await Promise.all([
+  const [templates, domains, recipientCounts, recentLog] = await Promise.all([
     (await templatesCol()).find({ brandId, active: true }).sort({ id: 1 }).toArray(),
+    (await domainsCol()).find({ brandId }).sort({ id: 1 }).toArray(),
     (await recipientsCol()).aggregate<{ _id: string; n: number }>([
       { $match: { campaignId: id } },
       { $group: { _id: '$status', n: { $sum: 1 } } },
@@ -182,6 +196,50 @@ export default async function CampaignDetailPage({
               </div>
               <div className="form-foot">
                 <button type="submit" className="btn btn-primary btn-sm">Save templates</button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        <div className="card">
+          <p className="section-title">Domains used by this campaign</p>
+          <p className="section-sub">
+            Check domains to assign as senders. Uncheck all = use every active brand domain.
+          </p>
+          {domains.length === 0 ? (
+            <p className="cell-muted">No domains. <Link href="/domains">Add one</Link>.</p>
+          ) : (
+            <form action={updateCampaignDomains}>
+              <input type="hidden" name="id" value={c.id} />
+              <div className="form-grid">
+                {domains.map(d => {
+                  const checked =
+                    !c.domainIds || c.domainIds.length === 0
+                      ? true
+                      : c.domainIds.includes(d.id);
+                  const verified = d.spfVerified && d.dkimVerified && d.dmarcVerified;
+                  return (
+                    <label key={d.id} className="check-row">
+                      <input type="checkbox" name="domainIds" value={d.id} defaultChecked={checked} />
+                      <span>
+                        <span className="cell-strong">{d.fromEmail}</span>
+                        {' '}
+                        <span className={d.status === 'active' ? 'badge badge-success badge-plain' : 'badge badge-plain'}>
+                          {d.status}
+                        </span>
+                        {' '}
+                        <span className={verified ? 'badge badge-success badge-plain' : 'badge badge-warning badge-plain'}>
+                          {verified ? 'DNS ok' : 'DNS incomplete'}
+                        </span>
+                        {' '}
+                        <span className="cell-muted">cap {d.dailyCap}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="form-foot">
+                <button type="submit" className="btn btn-primary btn-sm">Save domains</button>
               </div>
             </form>
           )}
