@@ -160,8 +160,17 @@ export async function buildPorts(brandId: number): Promise<TickPorts> {
     },
 
     getActiveTemplates: async () => {
+      // Scope to the active campaign's selected templates when set. If
+      // templateIds is missing/empty, fall back to all active brand templates
+      // (backward compat with campaigns created before per-campaign selection).
+      const campCol = await campaignsCol();
+      const camp = await campCol.findOne({ status: 'active', brandId });
       const col = await templatesCol();
-      const rows = await col.find({ active: true, brandId }).toArray();
+      const filter: Record<string, unknown> = { active: true, brandId };
+      if (camp?.templateIds && camp.templateIds.length > 0) {
+        filter.id = { $in: camp.templateIds };
+      }
+      const rows = await col.find(filter).toArray();
       return rows.map((t) => ({
         id: t.id,
         subject: t.subject,

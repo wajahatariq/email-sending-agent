@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
-import { campaignsCol } from '@/db/collections';
+import { campaignsCol, recipientsCol } from '@/db/collections';
 import { getSelectedBrandId } from '@/lib/brand';
 import { SendNowButton } from './SendNowButton';
 
@@ -11,6 +11,19 @@ async function setCampaignStatus(formData: FormData) {
   const id = Number(formData.get('id'));
   const status = formData.get('status') as string;
   await (await campaignsCol()).updateOne({ id }, { $set: { status } });
+  revalidatePath('/');
+}
+
+async function deleteCampaign(formData: FormData) {
+  'use server';
+  const brandId = await getSelectedBrandId();
+  if (brandId === null) throw new Error('no brand selected');
+  const id = Number(formData.get('id'));
+  if (!Number.isFinite(id)) return;
+  // Drop pending recipients with the campaign — sent rows + sendLog stay for
+  // audit history (they're never picked again because the campaign is gone).
+  await (await recipientsCol()).deleteMany({ campaignId: id, status: 'pending' });
+  await (await campaignsCol()).deleteOne({ id, brandId });
   revalidatePath('/');
 }
 
@@ -42,7 +55,7 @@ export default async function CampaignsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Campaigns</h1>
-          <p className="page-sub">Start a campaign, then send batches.</p>
+          <p className="page-sub">Click a campaign to edit settings, templates, and recipients.</p>
         </div>
         <div className="page-actions">
           <SendNowButton />
@@ -71,7 +84,11 @@ export default async function CampaignsPage() {
               {campaigns.map(c => (
                 <tr key={c.id}>
                   <td className="num"><span className="cell-muted">{c.id}</span></td>
-                  <td><span className="cell-strong">{c.name}</span></td>
+                  <td>
+                    <Link href={`/campaigns/${c.id}`} className="cell-strong">
+                      {c.name}
+                    </Link>
+                  </td>
                   <td>
                     <span className={
                       c.status === 'active' ? 'badge badge-success' :
@@ -84,6 +101,8 @@ export default async function CampaignsPage() {
                   <td className="num">{c.globalDailyCap}</td>
                   <td><span className="cell-muted">{new Date(c.createdAt).toLocaleDateString()}</span></td>
                   <td className="col-actions">
+                    <Link href={`/campaigns/${c.id}`} className="btn btn-sm">Open</Link>
+                    {' '}
                     <form action={setCampaignStatus} style={{ display: 'inline' }}>
                       <input type="hidden" name="id" value={c.id} />
                       <input type="hidden" name="status" value="active" />
@@ -105,6 +124,17 @@ export default async function CampaignsPage() {
                         className="btn btn-sm"
                       >
                         Stop
+                      </button>
+                    </form>
+                    {' '}
+                    <form action={deleteCampaign} style={{ display: 'inline' }}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <button
+                        type="submit"
+                        className="btn btn-sm btn-danger"
+                        title="Delete campaign and its pending recipients"
+                      >
+                        Delete
                       </button>
                     </form>
                   </td>

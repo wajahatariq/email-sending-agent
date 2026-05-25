@@ -63,6 +63,7 @@ export interface CampaignDoc {
   globalDailyCap: number;
   perInboxCap: number;
   jitterPct: number;
+  templateIds?: number[];
   createdAt: Date;
 }
 
