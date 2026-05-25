@@ -5,8 +5,15 @@ import UploadForm from './UploadForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function UploadPage() {
+export default async function UploadPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ campaign?: string }>;
+}) {
   const brandId = await getSelectedBrandId();
+  const sp = await searchParams;
+  const preselect = sp.campaign ? Number(sp.campaign) : undefined;
+  const preselectedCampaignId = Number.isFinite(preselect) ? (preselect as number) : undefined;
 
   if (brandId === null) {
     return (
@@ -39,7 +46,7 @@ export default async function UploadPage() {
       </div>
 
       <div className="card">
-        <UploadForm campaigns={campaigns} />
+        <UploadForm campaigns={campaigns} preselectedCampaignId={preselectedCampaignId} />
       </div>
     </>
   );

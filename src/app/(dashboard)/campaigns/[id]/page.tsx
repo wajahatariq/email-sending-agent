@@ -161,8 +161,19 @@ export default async function CampaignDetailPage({
 
       <div className="stack">
         <div className="card">
-          <p className="section-title">Recipient stats</p>
-          <div className="form-grid">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+            <div>
+              <p className="section-title">Recipients</p>
+              <p className="section-sub">Import a CSV of recipients into this campaign.</p>
+            </div>
+            <Link
+              href={`/upload?campaign=${c.id}`}
+              className="btn btn-primary btn-sm"
+            >
+              Add recipients
+            </Link>
+          </div>
+          <div className="form-grid" style={{ marginTop: 12 }}>
             <div className="field"><span className="label">Total</span><span className="cell-strong">{totalRecipients}</span></div>
             <div className="field"><span className="label">Pending</span><span className="cell-strong">{counts.pending ?? 0}</span></div>
             <div className="field"><span className="label">Sent</span><span className="cell-strong">{counts.sent ?? 0}</span></div>

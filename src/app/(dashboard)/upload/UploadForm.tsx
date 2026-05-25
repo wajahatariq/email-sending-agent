@@ -4,7 +4,13 @@ import { importCsv, ImportResult } from './actions';
 
 interface Campaign { id: number; name: string; status: string; }
 
-export default function UploadForm({ campaigns }: { campaigns: Campaign[] }) {
+export default function UploadForm({
+  campaigns,
+  preselectedCampaignId,
+}: {
+  campaigns: Campaign[];
+  preselectedCampaignId?: number;
+}) {
   const [result, action, pending] = useActionState<ImportResult | null, FormData>(importCsv, null);
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState('');
@@ -40,7 +46,12 @@ export default function UploadForm({ campaigns }: { campaigns: Campaign[] }) {
         <div className="form-grid">
           <div className="field field-wide">
             <label className="label" htmlFor="campaignId">Select existing campaign</label>
-            <select className="select" id="campaignId" name="campaignId">
+            <select
+              className="select"
+              id="campaignId"
+              name="campaignId"
+              defaultValue={preselectedCampaignId ? String(preselectedCampaignId) : ''}
+            >
               <option value="">— none —</option>
               {campaigns.map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.status})</option>
