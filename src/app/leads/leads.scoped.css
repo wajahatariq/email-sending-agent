@@ -1,0 +1,204 @@
+/* Lead Generation tab — dark theme, fully scoped under #leadgen-root so it
+   never collides with the sender dashboard's light theme / CSS variables. */
+
+#leadgen-root {
+  --bg: #0b0d10;
+  --panel: #14181d;
+  --panel-2: #1b2129;
+  --border: #262d36;
+  --text: #e6e9ee;
+  --muted: #8b95a3;
+  --accent: #4f8cff;
+  --accent-2: #2f6ee0;
+  --good: #3fb950;
+  --role: #d29922;
+
+  min-height: calc(100vh - 52px);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+#leadgen-root * {
+  box-sizing: border-box;
+}
+
+#leadgen-root a {
+  color: var(--accent);
+  text-decoration: none;
+}
+#leadgen-root a:hover {
+  text-decoration: underline;
+}
+
+#leadgen-root .wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+#leadgen-root h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+#leadgen-root .sub {
+  color: var(--muted);
+  margin: 0 0 28px;
+}
+
+#leadgen-root .panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+#leadgen-root label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+#leadgen-root select,
+#leadgen-root textarea,
+#leadgen-root input {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+#leadgen-root textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+#leadgen-root .row {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 640px) {
+  #leadgen-root .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+#leadgen-root button {
+  background: var(--accent-2);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#leadgen-root button:hover {
+  background: var(--accent);
+}
+#leadgen-root button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#leadgen-root .btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+#leadgen-root .btn-ghost:hover {
+  background: var(--panel-2);
+}
+
+#leadgen-root .status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 14px;
+  min-height: 20px;
+}
+
+#leadgen-root .count {
+  color: var(--text);
+  font-weight: 600;
+}
+
+#leadgen-root table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+#leadgen-root th,
+#leadgen-root td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+#leadgen-root th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#leadgen-root .tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+#leadgen-root .tag-role {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--role);
+}
+#leadgen-root .tag-personal {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--good);
+}
+
+#leadgen-root .toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+#leadgen-root .note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 16px;
+  line-height: 1.6;
+}
+
+#leadgen-root .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: lg-spin 0.7s linear infinite;
+}
+@keyframes lg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

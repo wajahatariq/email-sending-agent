@@ -593,3 +593,46 @@ h3 {
     transition: none !important;
   }
 }
+
+/* ============================================================
+   Top tabs — switches between Email Sender and Lead Generation
+   (two apps, one deployment). Uses the sender's light theme tokens.
+   ============================================================ */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 52px;
+  padding: 0 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-brand {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.topbar-tabs {
+  display: flex;
+  gap: 4px;
+}
+.topbar-tab {
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  color: var(--ink-muted);
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.topbar-tab:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.topbar-tab.is-active {
+  background: var(--ink);
+  color: var(--primary-fg);
+}
