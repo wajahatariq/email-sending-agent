@@ -7,6 +7,7 @@
 
 import { existsSync } from 'node:fs';
 import { getDb } from '../src/db/client';
+import type { SuppressionDoc } from '../src/db/collections';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
@@ -20,7 +21,7 @@ const OFFTARGET = [
 
 async function main() {
   const db = await getDb();
-  const supp = db.collection('suppression');
+  const supp = db.collection<SuppressionDoc>('suppression');
   for (const email of OFFTARGET) {
     const id = email.toLowerCase();
     await supp.updateOne(
