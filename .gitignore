@@ -39,3 +39,7 @@ next-env.d.ts
 
 # extracted lead CSVs (PII)
 leads/*.csv
+
+.env.vercel
+
+.smtp-pass
