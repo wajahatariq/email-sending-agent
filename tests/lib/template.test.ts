@@ -51,4 +51,32 @@ describe('renderEmail', () => {
     const r = renderEmail({ subject: 'S', bodyHtml: '<a href="https://x.com">{{name}}</a>', bodyText: 't' }, rcpt, 'T', cfg);
     expect(r.html).toContain('<a href="https://x.com">Al</a>');
   });
+
+  it('renders {{site}} as the website base + attribution token when siteUrl is set', () => {
+    const t = { subject: 'S', bodyHtml: '<a href="{{site}}">work</a>', bodyText: 'See {{site}}' };
+    const r = renderEmail(t, rcpt, 'TOKEN123', { ...cfg, siteUrl: 'https://logictechdigital.com' });
+    expect(r.html).toContain('<a href="https://logictechdigital.com/?lt=TOKEN123">work</a>');
+    expect(r.text).toContain('See https://logictechdigital.com/?lt=TOKEN123');
+  });
+
+  it('trims a trailing slash on siteUrl', () => {
+    const r = renderEmail({ subject: 'S', bodyHtml: '{{site}}', bodyText: 't' }, rcpt, 'TOKEN123', { ...cfg, siteUrl: 'https://logictechdigital.com/' });
+    expect(r.html).toContain('https://logictechdigital.com/?lt=TOKEN123');
+  });
+
+  it('leaves {{site}} blank when no siteUrl is configured', () => {
+    const r = renderEmail({ subject: 'S', bodyHtml: '<p>{{site}}</p>', bodyText: '{{site}}' }, rcpt, 'TOKEN123', cfg);
+    expect(r.html).toContain('<p></p>');
+    expect(r.html).not.toContain('?lt=');
+  });
+
+  it('does not let recipient vars override the system site token', () => {
+    const r = renderEmail(
+      { subject: 'S', bodyHtml: '{{site}}', bodyText: 't' },
+      { ...rcpt, vars: { site: 'https://evil.com' } },
+      'TOKEN123', { ...cfg, siteUrl: 'https://logictechdigital.com' },
+    );
+    expect(r.html).toContain('https://logictechdigital.com/?lt=TOKEN123');
+    expect(r.html).not.toContain('evil.com');
+  });
 });

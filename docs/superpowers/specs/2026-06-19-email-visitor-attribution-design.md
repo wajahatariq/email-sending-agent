@@ -26,16 +26,24 @@ outreach + reply status.
 - **Identifier:** reuse the existing per-recipient `unsubToken` as the click
   token (`?lt=<unsubToken>`). Unguessable, no new field. Bonus: `base64url(email)`
   is the first segment, so the email decodes from the token even before a DB lookup.
-- **Architecture:** Approach A — cross-DB live read. The website admin resolves
-  token → recipient from the `email_sending_agent` DB on demand. No duplication,
-  always fresh.
+- **Architecture:** Approach A — cross-cluster live read. The email agent and the
+  website run on **separate Mongo clusters**, so the website opens a *second*,
+  read-only Mongo client to the email cluster and resolves token → recipient on
+  demand. No duplication, always fresh.
 - **Section content:** Identity + Behavior + Hot flag + Outreach link (all four).
 
 ## Architecture
 
-Two databases on one Mongo cluster (`sr1cy8k`):
-- `email_sending_agent` — `recipients`, `campaigns`, `send_log`, `replies`, `suppression`
-- `logictech` — `visits`, `messages`, `leads`
+**Two separate Mongo clusters:**
+- Email cluster `sr1cy8k`, DB `email_sending_agent` — `recipients`, `campaigns`,
+  `send_log`, `replies`, `suppression`
+- Website cluster `cluster0.souehk8`, DB `logictech` — `visits`, `messages`, `leads`
+
+The website therefore needs a **second connection** to the email cluster to do
+the join — it cannot use one client for both. Store the email cluster URI on the
+website as a new env `EMAIL_DB_URI` (+ `EMAIL_DB_NAME=email_sending_agent`).
+**Recommend a read-only Mongo user** for this URI — the website only reads
+recipients/campaigns/send_log/replies, never writes them.
 
 ### 1. Email side — `Lead-Extraction-Agent`
 
@@ -63,8 +71,14 @@ This is the only change required on the email side. Tiny.
 ### 3. Website join — `logictech-digital`
 
 `src/app/api/admin/data/route.ts`:
-- Reuse the cached Mongo client to also open `client.db("email_sending_agent")`.
+- Open a second cached Mongo client to `EMAIL_DB_URI` (email cluster), DB
+  `EMAIL_DB_NAME`. Mirror the existing `getDb()` caching pattern in a new
+  `getEmailDb()` helper so it degrades to a no-op when the env is absent.
 - Collect distinct `lt` tokens from recent `visits`.
+- **Offline fallback:** `unsubToken` = `base64url(email).sig24`, so the email
+  address can be decoded from the token's first segment without any cross-cluster
+  call. If the email cluster is unreachable, still show the decoded email +
+  behavior; company/campaign/outreach degrade to blank.
 - Look up `recipients` by `unsubToken ∈ tokens` → `{ email, company, phone,
   campaignId }`; resolve `campaigns` for campaign name/niche.
 - For each recipient, pull outreach from `send_log` (sent timestamp/status) and
@@ -98,11 +112,12 @@ admin opens panel           ──GET /api/admin/data──>  join visits.lt ⋈
 
 ## Prerequisites
 
-- Website deployment (`logictech-digital`) `MONGODB_URI` must point to the same
-  cluster (`sr1cy8k`) as the email agent so the cross-DB read works. Verify on
-  Vercel before relying on the join.
-- A configured website base URL on the email side (`brand.websiteUrl` or
-  `LANDING_BASE_URL`).
+- Website deployment (`logictech-digital`) gets a new env `EMAIL_DB_URI`
+  pointing at the email cluster (`sr1cy8k`, DB `email_sending_agent`), plus
+  `EMAIL_DB_NAME`. Recommend a **read-only** Mongo user for it.
+- A configured website base URL on the email side: env `LANDING_BASE_URL`
+  (e.g. `https://logictechdigital.com`) or a per-brand `websiteUrl` field. Without
+  it, `{{site}}` renders blank and the link is simply omitted.
 
 ## Risks / non-goals
 
