@@ -1,6 +1,6 @@
 export interface TemplateInput { subject: string; bodyHtml: string; bodyText: string; }
 export interface RecipientInput { email: string; name: string; company: string; vars: Record<string, string>; }
-export interface RenderConfig { companyName: string; companyAddress: string; baseUrl: string; }
+export interface RenderConfig { companyName: string; companyAddress: string; baseUrl: string; siteUrl?: string; }
 export interface RenderedEmail { subject: string; html: string; text: string; headers: Record<string, string>; }
 
 function escapeHtml(s: string): string {
@@ -22,8 +22,11 @@ function fillHtml(s: string, ctx: Record<string, string>): string {
 export function renderEmail(
   t: TemplateInput, r: RecipientInput, unsubToken: string, cfg: RenderConfig,
 ): RenderedEmail {
-  // r.vars keys intentionally override name/company/email — recipient-level personalisation takes precedence
-  const ctx = { name: r.name, company: r.company, email: r.email, ...r.vars };
+  // r.vars keys intentionally override name/company/email — recipient-level personalisation takes precedence.
+  // `site` is system-controlled (carries the attribution token) so it goes in AFTER vars and cannot be overridden.
+  const siteBase = (cfg.siteUrl ?? '').replace(/\/+$/, '');
+  const site = siteBase ? `${siteBase}/?lt=${unsubToken}` : '';
+  const ctx = { name: r.name, company: r.company, email: r.email, ...r.vars, site };
   const unsubUrl = `${cfg.baseUrl}/api/unsub?token=${unsubToken}`;
   const footerHtml =
     `<hr><p style="font-size:12px;color:#888">${escapeHtml(cfg.companyName)}, ${escapeHtml(cfg.companyAddress)}.` +

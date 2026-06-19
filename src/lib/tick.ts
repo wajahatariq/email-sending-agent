@@ -22,7 +22,7 @@ export interface TickPorts {
   recordFailure: (x: { recipientId: number; domainId: number; kind: 'soft' | 'hard' | 'config'; error?: string }) => Promise<void>;
   suppress: (email: string, reason: 'bounce') => Promise<void>;
   pauseDomain: (domainId: number, reason: string) => Promise<void>;
-  cfg: { companyName: string; companyAddress: string; baseUrl: string };
+  cfg: { companyName: string; companyAddress: string; baseUrl: string; siteUrl?: string };
 }
 
 export interface TickResult { sent: number; failed: number; skipped?: string; }

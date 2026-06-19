@@ -361,6 +361,9 @@ export async function buildPorts(brandId: number): Promise<TickPorts> {
       companyName: brand?.name ?? 'Company',
       companyAddress: brand?.companyAddress ?? '',
       baseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3000',
+      // Public website base for the attribution link ({{site}} -> <base>/?lt=<unsubToken>).
+      // Brand-level override wins; else the LANDING_BASE_URL env; else empty (link disabled).
+      siteUrl: (brand as { websiteUrl?: string })?.websiteUrl ?? process.env.LANDING_BASE_URL ?? '',
     },
   };
 }
