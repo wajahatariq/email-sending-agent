@@ -12,11 +12,19 @@ import type { SuppressionDoc } from '../src/db/collections';
 if (existsSync('.env')) process.loadEnvFile('.env');
 
 const OFFTARGET = [
+  // asphalt batch
   'wml@wml.com.au',            // AFPA — industry association
   'enquiries@afpa.asn.au',     // AFPA — industry association
   'projects@iseekplant.com.au',// iSeekPlant — marketplace
   'advertise@top5guide.com.au',// Top5Guide — directory
   'waterworxpc@gmail.com',     // Waterworx — pressure cleaning, wrong niche
+  // flower-shop batch
+  'info@outsideflowers.com.au',          // Outside Flowers — cut-flower wholesaler, not retail
+  'communications@brisbanemarkets.com.au',// Brisbane Markets — wholesale market operator
+  'hello@mrroses.com',                    // Mr Roses — national delivery marketplace
+  'hello@thefloristquarter.com.au',       // The Florist Quarter — directory / community
+  'info@flowerindustryaustralia.com.au',  // Flower Industry Australia — industry association
+  'flowers@flowerindustryaustralia.com.au',// FIA — second inbox
 ];
 
 async function main() {
