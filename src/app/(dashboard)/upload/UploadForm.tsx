@@ -14,14 +14,24 @@ export default function UploadForm({
   const [result, action, pending] = useActionState<ImportResult | null, FormData>(importCsv, null);
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
+  function loadFile(f: File | undefined | null) {
     if (!f) return;
     setFileName(f.name);
     const reader = new FileReader();
     reader.onload = () => setCsv(String(reader.result ?? ''));
     reader.readAsText(f);
+  }
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    loadFile(e.target.files?.[0]);
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    loadFile(e.dataTransfer.files?.[0]);
   }
 
   return (
@@ -70,14 +80,37 @@ export default function UploadForm({
           </div>
           <div className="field field-wide">
             <label className="label" htmlFor="csvFile">Upload CSV file</label>
+            <div
+              onDrop={onDrop}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onClick={() => document.getElementById('csvFile')?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') document.getElementById('csvFile')?.click(); }}
+              style={{
+                border: `2px dashed ${dragOver ? '#4f46e5' : 'var(--border, #d0d0d8)'}`,
+                background: dragOver ? 'rgba(79,70,229,0.06)' : 'transparent',
+                borderRadius: '10px',
+                padding: '18px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'border-color .15s, background .15s',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: '14px' }}>
+                {dragOver ? 'Drop the CSV to load it' : 'Drag & drop a CSV here, or click to browse'}
+              </p>
+              {fileName && <p className="hint" style={{ marginTop: '6px' }}>Loaded <code>{fileName}</code> — review below before importing.</p>}
+            </div>
             <input
               className="input"
               type="file"
               id="csvFile"
               accept=".csv,text/csv,text/plain"
               onChange={onFile}
+              style={{ display: 'none' }}
             />
-            {fileName && <p className="hint">Loaded <code>{fileName}</code> — review below before importing.</p>}
           </div>
           <div className="field field-wide">
             <label className="label" htmlFor="csv">CSV Data <span className="hint">(or paste directly)</span></label>

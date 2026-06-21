@@ -58,7 +58,7 @@ async function main() {
   const clone = await cCol.findOne({ id: CLONE_FROM_CAMPAIGN });
   if (!clone) throw new Error(`clone-source campaign ${CLONE_FROM_CAMPAIGN} not found`);
   const domainIds = (await dCol.find({ brandId: BRAND_ID }).project({ id: 1, _id: 0 }).toArray())
-    .map((d: { id: number }) => d.id)
+    .map((d) => (d as { id: number }).id)
     .sort((a, b) => a - b);
 
   const templateId = await nextId('templates');
