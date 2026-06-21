@@ -98,7 +98,9 @@ async function searchTavily(query: string, country: CountryConfig): Promise<Sear
       search_depth: "advanced",
       max_results: MAX_RESULTS,
       include_raw_content: true,
-      country: country.label.toLowerCase(),
+      // Strip any parenthetical (e.g. "United Kingdom (England)") — Tavily's
+      // country param expects a bare country name or it returns no results.
+      country: country.label.replace(/\s*\([^)]*\)/g, "").trim().toLowerCase(),
     }),
   });
   if (!res.ok) throw new Error(`tavily ${res.status}`);
